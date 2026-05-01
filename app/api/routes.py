@@ -69,6 +69,9 @@ def save_episodes_to_db(episode_list, anime_url=None):
                 )
                 db.session.add(ep)
         
+        if anime:
+            anime.last_scanned = datetime.utcnow()
+        
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -112,10 +115,9 @@ def get_embed():
     if not site_key:
         return jsonify({'error': 'URL domain not supported'}), 400
 
-    # Check cache/DB
-    cached_entry = EmbedRequest.query.filter_by(url=target_url).first()
-    if cached_entry and not force_refresh:
-        return jsonify(cached_entry.to_dict()), 200
+    # The professional on-demand system now handles caching for animes and episodes.
+    # The old EmbedRequest cache is kept only as a fallback or for non-anime URLs.
+    # But for animesdigital, we want to use the new logic below.
 
     # Scrape
     url_patterns = config.get('url_patterns', {})
