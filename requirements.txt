@@ -1,0 +1,9 @@
+setuptools>=75.0.0
+Flask==3.1.0
+Flask-Caching==2.3.0
+Flask-Limiter==3.10.1
+Flask-SQLAlchemy==3.1.1
+playwright==1.51.0
+playwright-stealth==1.0.6
+SQLAlchemy==2.0.40
+urllib3==2.3.0
