@@ -74,6 +74,28 @@ def save_episodes_to_db(episode_list, anime_url=None):
         db.session.rollback()
         logger.error(f"Error saving episodes to DB: {e}")
 
+@bp.route('/search', methods=['GET'])
+@limiter.limit("60 per minute")
+def search_animes():
+    if not check_api_key():
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'error': 'Query parameter "q" is required'}), 400
+
+    # Search in DB using ILIKE (case-insensitive)
+    try:
+        results = Anime.query.filter(Anime.name.ilike(f"%{query}%")).limit(50).all()
+        return jsonify({
+            'query': query,
+            'total_found': len(results),
+            'results': [anime.to_dict() for anime in results]
+        }), 200
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return jsonify({'error': 'Search failed'}), 500
+
 @bp.route('/get-embed', methods=['GET'])
 @limiter.limit("10 per minute")
 def get_embed():
@@ -138,6 +160,25 @@ def get_embed():
                 }
 
             elif scraper.match_pattern(target_url, url_patterns.get('anime_main', '')):
+                # PROFESSIONAL ON-DEMAND SYSTEM:
+                # 1. Check if we already have this anime and its episodes in DB
+                anime = Anime.query.filter_by(url=target_url).first()
+                if anime and anime.episodes:
+                    # Check how old the data is (e.g., 24 hours)
+                    from datetime import timedelta
+                    if anime.last_scanned and (datetime.utcnow() - anime.last_scanned) < timedelta(hours=24):
+                        logger.info(f"Returning cached episodes for: {anime.name}")
+                        response_payload = {
+                            'type': 'anime_series',
+                            'anime_title': anime.name,
+                            'source_url': target_url,
+                            'total_episodes': len(anime.episodes),
+                            'episodes': [ep.to_dict() for ep in anime.episodes],
+                            'cached': True
+                        }
+                        return jsonify(response_payload), 200
+
+                # 2. If not in DB or too old, SCRAPE it
                 result = scraper.extract_episodes(page, target_url, config)
                 if 'error' in result:
                     return jsonify(result), 502
@@ -151,7 +192,7 @@ def get_embed():
                         embed_info['title'] = item.get('title')
                     embeds.append(embed_info)
                 
-                # Save episodes and link to anime
+                # 3. Save episodes and link to anime
                 save_episodes_to_db(embeds, anime_url=target_url)
 
                 response_payload = {
@@ -159,7 +200,8 @@ def get_embed():
                     'anime_title': result.get('title'),
                     'source_url': target_url,
                     'total_episodes': result.get('total_items'),
-                    'episodes': embeds
+                    'episodes': embeds,
+                    'cached': False
                 }
 
             elif scraper.match_pattern(target_url, config.get('selectors', {}).get('directory', {}).get('url_pattern', '')):
