@@ -1,11 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
-from app.models.embed import db, EmbedRequest
+from app.models.embed import db, EmbedRequest, Anime, Episode
 from app.services.scraper import ScraperService
 from app.services.site_manager import site_manager
 from app.__init__ import cache, limiter
 import json
 import logging
 from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
 
 bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
@@ -15,6 +16,63 @@ def check_api_key():
     if not key or key != current_app.config['API_KEY']:
         return False
     return True
+
+def save_animes_to_db(anime_list):
+    try:
+        for item in anime_list:
+            name = item.get('name')
+            url = item.get('url')
+            
+            if not name or not url:
+                continue
+
+            # Check if already exists
+            anime = Anime.query.filter_by(url=url).first()
+            if anime:
+                anime.name = name
+                anime.last_scanned = datetime.utcnow()
+            else:
+                anime = Anime(name=name, url=url, last_scanned=datetime.utcnow())
+                db.session.add(anime)
+        
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error saving animes to DB: {e}")
+
+def save_episodes_to_db(episode_list, anime_url=None):
+    try:
+        anime = None
+        if anime_url:
+            anime = Anime.query.filter_by(url=anime_url).first()
+
+        for item in episode_list:
+            title = item.get('title')
+            url = item.get('episode_url') or item.get('url')
+            embed_url = item.get('embed_url')
+            
+            if not url or not embed_url:
+                continue
+
+            ep = Episode.query.filter_by(url=url).first()
+            if ep:
+                ep.title = title
+                ep.embed_url = embed_url
+                ep.last_updated = datetime.utcnow()
+            else:
+                ep = Episode(
+                    title=title, 
+                    url=url, 
+                    embed_url=embed_url, 
+                    anime_id=anime.id if anime else None,
+                    last_updated=datetime.utcnow()
+                )
+                db.session.add(ep)
+        
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error saving episodes to DB: {e}")
 
 @bp.route('/get-embed', methods=['GET'])
 @limiter.limit("10 per minute")
@@ -68,6 +126,9 @@ def get_embed():
                             'note': 'Main page link'
                         })
                 
+                # Save episodes to DB
+                save_episodes_to_db(embeds)
+
                 response_payload = {
                     'type': 'home',
                     'source': 'AnimesDigital',
@@ -90,6 +151,9 @@ def get_embed():
                         embed_info['title'] = item.get('title')
                     embeds.append(embed_info)
                 
+                # Save episodes and link to anime
+                save_episodes_to_db(embeds, anime_url=target_url)
+
                 response_payload = {
                     'type': 'anime_series',
                     'anime_title': result.get('title'),
@@ -98,8 +162,29 @@ def get_embed():
                     'episodes': embeds
                 }
 
+            elif scraper.match_pattern(target_url, config.get('selectors', {}).get('directory', {}).get('url_pattern', '')):
+                result = scraper.extract_directory(page, target_url, config)
+                if 'error' in result:
+                    return jsonify(result), 502
+                
+                # Save each anime individually to the new Anime table
+                save_animes_to_db(result.get('animes', []))
+
+                response_payload = {
+                    'type': 'directory',
+                    'source': 'AnimesDigital',
+                    'url': target_url,
+                    'total_pages': result.get('total_pages'),
+                    'count': result.get('items_per_page'),
+                    'animes': result.get('animes')
+                }
+
             elif scraper.match_pattern(target_url, url_patterns.get('episode', '')):
                 embed_info = scraper.extract_embed(page, target_url, config)
+                
+                # Save single episode to DB
+                save_episodes_to_db([embed_info])
+
                 response_payload = {
                     'type': 'single_episode',
                     'title': embed_info.get('title'),

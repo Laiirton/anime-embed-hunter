@@ -22,6 +22,11 @@
           "#player iframe",
           ".tab-video iframe"
         ]
+      },
+      "directory": {
+        "url_pattern": "^https?://animesdigital\\.org/animes-legendados-online.*$",
+        "item_selector": "div.itemA a",
+        "pagination_info": "div.m_center > p.infos-list"
       }
     },
     "bypass_javascript": false

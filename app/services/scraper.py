@@ -145,6 +145,48 @@ class ScraperService:
         self.capture_screenshot(page, "error_embed")
         return {'episode_url': episode_url, 'error': 'Could not find embed URL'}
 
+    def extract_directory(self, page: Page, url: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        selectors = config.get("selectors", {}).get("directory", {})
+        item_selector = selectors.get('item_selector')
+        pagination_selector = selectors.get('pagination_info')
+
+        try:
+            page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+            page.wait_for_selector(item_selector, timeout=30000)
+
+            # Extract pagination info (e.g., "Página 1 de 81")
+            total_pages = 1
+            if pagination_selector:
+                try:
+                    text = page.inner_text(pagination_selector).strip()
+                    match = re.search(r'de (\d+)', text)
+                    if match:
+                        total_pages = int(match.group(1))
+                except:
+                    pass
+
+            elements = page.query_selector_all(item_selector)
+            animes = []
+            for elem in elements:
+                href = elem.get_attribute('href')
+                name = elem.get_attribute('title') or elem.inner_text().strip()
+                if href:
+                    animes.append({
+                        'name': name,
+                        'url': urljoin(url, href)
+                    })
+
+            return {
+                'url': url,
+                'total_pages': total_pages,
+                'items_per_page': len(animes),
+                'animes': animes
+            }
+        except Exception as e:
+            self.logger.error(f"Error extracting directory from {url}: {e}")
+            self.capture_screenshot(page, "error_directory")
+            return {'error': str(e)}
+
     def _extract_via_iframe_bypass(self, page: Page, url: str, selector: str) -> Dict[str, Any]:
         page.set_content(f'<html><body><iframe src="{url}" sandbox></iframe></body></html>')
         page.wait_for_load_state("domcontentloaded")
