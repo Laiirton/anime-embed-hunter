@@ -8,13 +8,15 @@
     },
     "selectors": {
       "home": {
-        "episodes_section": ".itemE a"
+        "episodes_section": ".itemE a, .itemA a"
       },
       "anime_main": {
+        "title": "h1",
         "episodes_section": "a[href*='video/']",
         "pagination": "ul.content-pagination li a"
       },
       "episode": {
+        "title": "h1",
         "iframe_selectors": [
           "#player1 iframe",
           "#player iframe",

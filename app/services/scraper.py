@@ -52,15 +52,35 @@ class ScraperService:
             
             page.goto(url, timeout=Config.BROWSER_TIMEOUT)
             page.wait_for_selector(episodes_selector, timeout=30000)
+
+            # Extract page title as anime name
+            title_selector = selectors.get('title')
+            if title_selector:
+                try:
+                    title = page.inner_text(title_selector, timeout=5000).strip()
+                except:
+                    title = page.title().split('-')[0].strip()
+            else:
+                title = page.title().split('-')[0].strip()
+            
             elements = page.query_selector_all(episodes_selector)
             
             urls = []
             for elem in elements:
                 href = elem.get_attribute('href')
+                link_title = elem.get_attribute('title') or elem.inner_text().strip()
                 if href:
-                    urls.append(urljoin(url, href))
+                    urls.append({
+                        'url': urljoin(url, href),
+                        'title': link_title
+                    })
             
-            return {'url': url, 'episode_urls': urls}
+            return {
+                'url': url, 
+                'title': title,
+                'total_items': len(urls),
+                'episode_urls': urls
+            }
             
         except Exception as e:
             self.logger.error(f"Error extracting episodes from {url}: {e}")
@@ -89,12 +109,27 @@ class ScraperService:
                         return {'episode_url': episode_url, 'embed_url': links[0]}
                 else:
                     page.goto(episode_url, timeout=Config.BROWSER_TIMEOUT)
+                    
+                    # Try to get episode title
+                    title_selector = config.get("selectors", {}).get("episode", {}).get("title")
+                    if title_selector:
+                        try:
+                            ep_title = page.inner_text(title_selector, timeout=5000).strip()
+                        except:
+                            ep_title = page.title().split('-')[0].strip()
+                    else:
+                        ep_title = page.title().split('-')[0].strip()
+                    
                     for selector in iframe_selectors:
                         try:
                             iframe_el = page.wait_for_selector(selector, timeout=10000)
                             src = iframe_el.get_attribute("src")
                             if src:
-                                return {'episode_url': episode_url, 'embed_url': src}
+                                return {
+                                    'episode_url': episode_url, 
+                                    'title': ep_title,
+                                    'embed_url': src
+                                }
                         except:
                             continue
                 

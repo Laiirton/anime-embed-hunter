@@ -50,31 +50,62 @@ def get_embed():
                 if 'error' in result:
                     return jsonify(result), 502
                 
-                episode_urls = result.get('episode_urls', []) # Process all episodes from home
+                items = result.get('episode_urls', [])
                 embeds = []
-                for ep_url in episode_urls:
-                    # Only extract embed if it matches the episode pattern
+                for item in items:
+                    ep_url = item['url']
                     if scraper.match_pattern(ep_url, url_patterns.get('episode', '')):
-                        embeds.append(scraper.extract_embed(page, ep_url, config))
-                    else:
-                        logger.info(f"Skipping non-episode URL from home: {ep_url}")
+                        embed_info = scraper.extract_embed(page, ep_url, config)
+                        if 'title' not in embed_info:
+                            embed_info['title'] = item.get('title')
+                        embed_info['item_type'] = 'episode'
+                        embeds.append(embed_info)
+                    elif scraper.match_pattern(ep_url, url_patterns.get('anime_main', '')):
+                        embeds.append({
+                            'title': item.get('title'),
+                            'url': ep_url,
+                            'item_type': 'series_or_movie',
+                            'note': 'Main page link'
+                        })
                 
-                response_payload = {'source_url': target_url, 'episodes': embeds}
+                response_payload = {
+                    'type': 'home',
+                    'source': 'AnimesDigital',
+                    'url': target_url,
+                    'total_scraped': len(embeds),
+                    'results': embeds
+                }
 
             elif scraper.match_pattern(target_url, url_patterns.get('anime_main', '')):
                 result = scraper.extract_episodes(page, target_url, config)
                 if 'error' in result:
                     return jsonify(result), 502
                 
-                episode_urls = result.get('episode_urls', [])
+                items = result.get('episode_urls', [])
                 embeds = []
-                for ep_url in episode_urls:
-                    embeds.append(scraper.extract_embed(page, ep_url, config))
+                for item in items:
+                    ep_url = item['url']
+                    embed_info = scraper.extract_embed(page, ep_url, config)
+                    if 'title' not in embed_info:
+                        embed_info['title'] = item.get('title')
+                    embeds.append(embed_info)
                 
-                response_payload = {'anime_main_url': target_url, 'episodes': embeds}
+                response_payload = {
+                    'type': 'anime_series',
+                    'anime_title': result.get('title'),
+                    'source_url': target_url,
+                    'total_episodes': result.get('total_items'),
+                    'episodes': embeds
+                }
 
             elif scraper.match_pattern(target_url, url_patterns.get('episode', '')):
-                response_payload = scraper.extract_embed(page, target_url, config)
+                embed_info = scraper.extract_embed(page, target_url, config)
+                response_payload = {
+                    'type': 'single_episode',
+                    'title': embed_info.get('title'),
+                    'url': target_url,
+                    'embed_url': embed_info.get('embed_url')
+                }
 
             else:
                 return jsonify({'error': 'URL pattern not recognized'}), 400
