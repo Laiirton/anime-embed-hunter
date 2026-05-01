@@ -8,29 +8,10 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 
-import re
+from app.utils.helpers import clean_name
 
 bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
-
-def clean_name(name):
-    if not name:
-        return name
-    # Remove prefix "Assistir "
-    name = re.sub(r'^Assistir\s+', '', name, flags=re.IGNORECASE)
-    # Remove suffixes like " Online em HD", " Online FHD", " Todos Episódios", etc.
-    suffixes = [
-        r'\s+Online\s+em\s+HD$',
-        r'\s+Online\s+FHD$',
-        r'\s+Todos\s+Episódios.*$',
-        r'\s+Online$',
-        r'\s+Dublado\s+Online.*$',
-        r'\s+Legendado\s+Online.*$'
-    ]
-    for suffix in suffixes:
-        name = re.sub(suffix, '', name, flags=re.IGNORECASE)
-    
-    return name.strip()
 
 def check_api_key():
     key = request.headers.get('X-API-KEY')

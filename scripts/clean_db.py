@@ -1,28 +1,15 @@
 import sqlite3
-import re
 import os
+import sys
 
-def clean_name(name):
-    if not name:
-        return name
-    # Remove prefix "Assistir "
-    name = re.sub(r'^Assistir\s+', '', name, flags=re.IGNORECASE)
-    # Remove suffixes like " Online em HD", " Online FHD", " Todos Episódios", etc.
-    suffixes = [
-        r'\s+Online\s+em\s+HD$',
-        r'\s+Online\s+FHD$',
-        r'\s+Todos\s+Episódios.*$',
-        r'\s+Online$',
-        r'\s+Dublado\s+Online.*$',
-        r'\s+Legendado\s+Online.*$'
-    ]
-    for suffix in suffixes:
-        name = re.sub(suffix, '', name, flags=re.IGNORECASE)
-    
-    return name.strip()
+# Adiciona a raiz do projeto ao path para importar o helper de limpeza
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(base_dir)
+
+from app.utils.helpers import clean_name
 
 def main():
-    db_path = 'instance/anime_embeds.db'
+    db_path = os.path.join(base_dir, 'instance', 'anime_embeds.db')
     if not os.path.exists(db_path):
         print(f"[!] Banco de dados não encontrado em {db_path}")
         return

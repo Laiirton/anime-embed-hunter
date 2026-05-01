@@ -2,14 +2,19 @@ import requests
 import json
 import time
 import os
+import sys
+
+# Adiciona a raiz do projeto ao path para possíveis imports futuros
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ====================================================
 #                  CONFIGURAÇÕES
 # ====================================================
 BASE_URL = "http://localhost:5000/get-embed"
-API_KEY = "123" # Sua chave de API
+API_KEY = "123" 
 DIRECTORY_URL_TEMPLATE = "https://animesdigital.org/animes-legendados-online?filter_letter=0&type_url=animes&filter_audio=legendado&filter_order=name&filter_genre_add=&filter_genre_del=&pagina={page}&search=0&limit=30"
-OUTPUT_FILE = "anime_catalog.json"
+OUTPUT_DIR = "data"
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "anime_catalog.json")
 
 def fetch_page(page_num):
     url = DIRECTORY_URL_TEMPLATE.format(page=page_num)
@@ -29,9 +34,9 @@ def fetch_page(page_num):
         return None
 
 def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     all_animes = []
     current_page = 1
-    total_pages = 1 # Será atualizado na primeira busca
 
     # Primeira busca para pegar o total de páginas
     first_page_data = fetch_page(current_page)
@@ -45,13 +50,12 @@ def main():
 
     # Loop para buscar as demais páginas
     for p in range(2, total_pages + 1):
-        time.sleep(2) # Delay para evitar bloqueios
+        time.sleep(1) # Delay reduzido pois a API já é rápida
         data = fetch_page(p)
         if data and 'animes' in data:
             all_animes.extend(data['animes'])
             print(f"[+] Página {p}/{total_pages} carregada. Total acumulado: {len(all_animes)}")
             
-            # Salva parcialmente para não perder dados em caso de erro
             with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
                 json.dump(all_animes, f, indent=2, ensure_ascii=False)
         else:

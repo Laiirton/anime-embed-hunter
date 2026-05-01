@@ -1,8 +1,12 @@
 import sqlite3
 import os
+import sys
 
 def check():
-    db_path = os.path.join('instance', 'anime_embeds.db')
+    # Caminho ajustado para rodar de dentro da pasta scripts/
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    db_path = os.path.join(base_dir, 'instance', 'anime_embeds.db')
+    
     if not os.path.exists(db_path):
         print(f"[!] Banco de dados não encontrado em {db_path}")
         return
@@ -50,7 +54,6 @@ def check():
 
     except sqlite3.OperationalError as e:
         print(f"[!] Erro ao ler tabelas: {e}")
-        print("[i] Certifique-se de que rodou o servidor (run.py) e fez ao menos uma busca.")
     finally:
         conn.close()
 

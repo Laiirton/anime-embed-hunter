@@ -56,34 +56,54 @@ python run.py
 
 ## 🔌 Endpoints
 
-### `GET /get-embed`
+### `GET /search`
 
-Retorna os links de embed para uma URL fornecida.
+Busca animes no catálogo local por nome.
 
 **Parâmetros:**
-- `url` (obrigatório): URL do anime, episódio ou página inicial.
-- `force` (opcional): Se `true`, ignora o cache e força um novo scrape.
-
-**Headers:**
-- `X-API-KEY`: Sua chave de API configurada no `.env`.
+- `q` (obrigatório): Nome ou parte do nome do anime.
 
 **Exemplo:**
 ```bash
-curl -H "X-API-KEY: 123" "http://localhost:5000/get-embed?url=https://site.com/anime/one-piece"
+curl -H "X-API-KEY: 123" "http://localhost:5000/search?q=hack"
 ```
 
-### `POST /reload-config`
+### `GET /get-embed`
 
-Recarrega o arquivo `configs.json` sem reiniciar o servidor.
+Retorna os links de embed para uma URL fornecida (Suporta Home, Séries e Episódios).
+Possui sistema de **Cache On-Demand** de 24 horas.
+
+**Parâmetros:**
+- `url` (obrigatório): URL do site alvo.
+- `force` (opcional): Se `true`, ignora o cache e força um novo scrape.
+
+---
+
+## 🛠️ Scripts de Automação
+
+Localizados na pasta `/scripts`:
+
+- **`cataloguer.py`**: Indexa o site alvo inteiro e salva os animes no banco de dados.
+- **`check_db.py`**: Mostra estatísticas e dados atuais do banco de dados.
+- **`clean_db.py`**: Limpa e sanitiza todos os nomes no banco de dados.
+
+Uso:
+```bash
+python scripts/cataloguer.py
+```
 
 ## 📁 Estrutura do Projeto
 
 ```text
 app/
-├── core/       # Configurações e segurança
+├── api/        # Rotas e controladores
+├── core/       # Configurações globais
 ├── models/     # Modelos de banco de dados
-├── services/   # Lógica de scraping e utilitários
-└── api/        # Definição das rotas
+├── services/   # Lógica do Scraper
+└── utils/      # Funções utilitárias (Limpeza, etc)
+scripts/        # Automação e manutenção
+data/           # Exportações de arquivos
+instance/       # Banco de dados SQLite
 ```
 
 ---
