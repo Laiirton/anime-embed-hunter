@@ -338,7 +338,7 @@ def get_embed():
             embed_results = []
             
             # Para a home, talvez queiramos processar apenas os primeiros N episódios para ser rápido
-            for ep_url in episode_urls[:10]: # Limite de 10 para teste/velocidade
+            for ep_url in episode_urls: # Processa todos os episódios da home
                 time.sleep(random.uniform(1, 2))
                 embed_info = extract_embed_url(page, ep_url, config)
                 embed_results.append(embed_info)

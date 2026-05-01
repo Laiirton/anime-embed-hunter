@@ -50,10 +50,14 @@ def get_embed():
                 if 'error' in result:
                     return jsonify(result), 502
                 
-                episode_urls = result.get('episode_urls', [])[:10] # Limit to 10 for home
+                episode_urls = result.get('episode_urls', []) # Process all episodes from home
                 embeds = []
                 for ep_url in episode_urls:
-                    embeds.append(scraper.extract_embed(page, ep_url, config))
+                    # Only extract embed if it matches the episode pattern
+                    if scraper.match_pattern(ep_url, url_patterns.get('episode', '')):
+                        embeds.append(scraper.extract_embed(page, ep_url, config))
+                    else:
+                        logger.info(f"Skipping non-episode URL from home: {ep_url}")
                 
                 response_payload = {'source_url': target_url, 'episodes': embeds}
 

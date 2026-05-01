@@ -1,120 +1,4 @@
 {
-  "animesgames": {
-    "domain": "animesgames.cc",
-    "url_patterns": {
-      "anime_main": "^https?://animesgames\\.cc/animes/\\w[\\w-]+/?$",
-      "episode": "^https?://animesgames\\.cc/video/\\d+-\\d+$"
-    },
-    "selectors": {
-      "anime_main": {
-        "episodes_section": ".listaEp .episodioItem a"
-      },
-      "episode": {
-        "iframe_selectors": [
-          "#jwplayer iframe.metaframe",
-          "#Link a",
-          "#flowplayer a"
-        ]
-      }
-    },
-    "bypass_javascript": false
-  },
-  "q1n": {
-    "domain": "q1n.net",
-    "url_patterns": {
-      "anime_main": "^https?://q1n\\.net/a/\\w[\\w-]+/?$",
-      "episode": "^https?://q1n\\.net/e/\\d+-\\d+$"
-    },
-    "selectors": {
-      "anime_main": {
-        "episodes_section": ".episodios .episodiotitle a"
-      },
-      "episode": {
-        "iframe_selectors": [
-          "iframe.metaframe.rptss"
-        ]
-      }
-    },
-    "bypass_javascript": false
-  },
-  "anroll": {
-    "domain": "anroll.net",
-    "url_patterns": {
-      "anime_main": "^https?://anroll\\.net/a/\\w[\\w-]+/?$",
-      "episode": "^https?://anroll\\.net/e/\\d+-\\d+$"
-    },
-    "selectors": {
-      "anime_main": {
-        "episodes_section": ".episodios .episodiotitle a"
-      },
-      "episode": {
-        "iframe_selectors": [
-          "jw-media.jw-reset"
-        ]
-      }
-    },
-    "bypass_javascript": false
-  },
-  "animesbr.tv": {
-    "domain": "animesbr.tv",
-    "url_patterns": {
-      "anime_main": "^https?://animesbr\\.tv/animes/\\w[\\w-]+/?$",
-      "episode": "^https?://animesbr\\.tv/episodios/\\w[\\w-]+/?$"
-    },
-    "selectors": {
-      "anime_main": {
-        "episodes_section": "#serie_contenido .episodios li .episodiotitle > a"
-      },
-      "episode": {
-        "iframe_selectors": [
-          "iframe.metaframe.rptss",
-          "iframe.player-alternative",
-          "div.video-container iframe"
-        ]
-      }
-    },
-    "bypass_javascript": false
-  },
-  "animesflix.net": {
-    "domain": "animesonlinecc.to",
-    "url_patterns": {
-      "anime_main": "^https?://animesonlinecc\\.to/anime/\\w[\\w-]+/?$",
-      "episode": "^https?://animesonlinecc\\.to/episodio/\\w[\\w-]+/?$"
-    },
-    "selectors": {
-      "anime_main": {
-        "episodes_section": "#serie_contenido .episodios li .episodiotitle > a"
-      },
-      "episode": {
-        "iframe_selectors": [
-          "iframe.metaframe.rptss",
-          "iframe.player-alternative",
-          "div.video-container iframe"
-        ]
-      }
-    },
-    "bypass_javascript": false
-  },
-  "goyabu": {
-    "domain": "goyabu.to",
-    "url_patterns": {
-      "anime_main": "^https?://goyabu\\.to/anime/\\w[\\w-]+/?$",
-      "episode": "^https?://goyabu\\.to/\\d+$"
-    },
-    "selectors": {
-      "anime_main": {
-        "episodes_section": ".conteudoP .listaEps li a"
-      },
-      "episode": {
-        "iframe_selectors": [
-          "iframe.metaframe.rptss",
-          "#playerFrame iframe"
-          
-        ]
-      }
-    },
-    "bypass_javascript": true
-  },
   "animesdigital": {
     "domain": "animesdigital.org",
     "url_patterns": {
@@ -132,9 +16,9 @@
       },
       "episode": {
         "iframe_selectors": [
-          "iframe",
-          ".video-container iframe",
-          "#player iframe"
+          "#player1 iframe",
+          "#player iframe",
+          ".tab-video iframe"
         ]
       }
     },
