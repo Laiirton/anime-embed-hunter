@@ -8,8 +8,29 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 
+import re
+
 bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
+
+def clean_name(name):
+    if not name:
+        return name
+    # Remove prefix "Assistir "
+    name = re.sub(r'^Assistir\s+', '', name, flags=re.IGNORECASE)
+    # Remove suffixes like " Online em HD", " Online FHD", " Todos Episódios", etc.
+    suffixes = [
+        r'\s+Online\s+em\s+HD$',
+        r'\s+Online\s+FHD$',
+        r'\s+Todos\s+Episódios.*$',
+        r'\s+Online$',
+        r'\s+Dublado\s+Online.*$',
+        r'\s+Legendado\s+Online.*$'
+    ]
+    for suffix in suffixes:
+        name = re.sub(suffix, '', name, flags=re.IGNORECASE)
+    
+    return name.strip()
 
 def check_api_key():
     key = request.headers.get('X-API-KEY')
@@ -20,7 +41,7 @@ def check_api_key():
 def save_animes_to_db(anime_list):
     try:
         for item in anime_list:
-            name = item.get('name')
+            name = clean_name(item.get('name'))
             url = item.get('url')
             
             if not name or not url:
@@ -47,7 +68,7 @@ def save_episodes_to_db(episode_list, anime_url=None):
             anime = Anime.query.filter_by(url=anime_url).first()
 
         for item in episode_list:
-            title = item.get('title')
+            title = clean_name(item.get('title'))
             url = item.get('episode_url') or item.get('url')
             embed_url = item.get('embed_url')
             
@@ -199,7 +220,7 @@ def get_embed():
 
                 response_payload = {
                     'type': 'anime_series',
-                    'anime_title': result.get('title'),
+                    'anime_title': clean_name(result.get('title')),
                     'source_url': target_url,
                     'total_episodes': result.get('total_items'),
                     'episodes': embeds,
@@ -211,16 +232,24 @@ def get_embed():
                 if 'error' in result:
                     return jsonify(result), 502
                 
-                # Save each anime individually to the new Anime table
-                save_animes_to_db(result.get('animes', []))
+                # Each item in directory already cleaned by save_animes_to_db if we wanted, 
+                # but let's clean the objects in results too for consistency.
+                cleaned_animes = []
+                for a in result.get('animes', []):
+                    cleaned_animes.append({
+                        'name': clean_name(a.get('name')),
+                        'url': a.get('url')
+                    })
+                
+                save_animes_to_db(cleaned_animes)
 
                 response_payload = {
                     'type': 'directory',
                     'source': 'AnimesDigital',
                     'url': target_url,
                     'total_pages': result.get('total_pages'),
-                    'count': result.get('items_per_page'),
-                    'animes': result.get('animes')
+                    'count': len(cleaned_animes),
+                    'animes': cleaned_animes
                 }
 
             elif scraper.match_pattern(target_url, url_patterns.get('episode', '')):
@@ -231,7 +260,7 @@ def get_embed():
 
                 response_payload = {
                     'type': 'single_episode',
-                    'title': embed_info.get('title'),
+                    'title': clean_name(embed_info.get('title')),
                     'url': target_url,
                     'embed_url': embed_info.get('embed_url')
                 }
