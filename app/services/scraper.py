@@ -1,0 +1,144 @@
+import logging
+import random
+import time
+import re
+import os
+from typing import List, Dict, Any, Tuple, Optional
+from urllib.parse import urljoin
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
+from app.core.config import Config
+
+class ScraperService:
+    def __init__(self):
+        self.playwright = None
+        self.browser = None
+        self.logger = logging.getLogger(__name__)
+
+    def __enter__(self):
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(headless=Config.HEADLESS)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
+
+    def _get_context(self) -> BrowserContext:
+        return self.browser.new_context(
+            user_agent=random.choice(Config.USER_AGENTS),
+            viewport={"width": random.randint(1200, 1920), "height": random.randint(800, 1080)},
+            locale="en-US",
+            timezone_id="America/Sao_Paulo"
+        )
+
+    def match_pattern(self, url: str, pattern: str) -> bool:
+        if not pattern:
+            return False
+        return re.match(pattern, url) is not None
+
+    def extract_episodes(self, page: Page, url: str, config: Dict[str, Any], selector_key: str = 'anime_main') -> Dict[str, Any]:
+        bypass_js = config.get("bypass_javascript", False)
+        selectors = config.get("selectors", {}).get(selector_key, {})
+        episodes_selector = selectors.get('episodes_section')
+
+        if not episodes_selector:
+            return {'error': f"Selector '{selector_key}.episodes_section' not found in config."}
+
+        try:
+            if bypass_js:
+                return self._extract_via_iframe_bypass(page, url, episodes_selector)
+            
+            page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+            page.wait_for_selector(episodes_selector, timeout=30000)
+            elements = page.query_selector_all(episodes_selector)
+            
+            urls = []
+            for elem in elements:
+                href = elem.get_attribute('href')
+                if href:
+                    urls.append(urljoin(url, href))
+            
+            return {'url': url, 'episode_urls': urls}
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting episodes from {url}: {e}")
+            self.capture_screenshot(page, "error_episodes")
+            return {'error': str(e)}
+
+    def capture_screenshot(self, page: Page, name: str):
+        try:
+            os.makedirs('screenshots', exist_ok=True)
+            path = f"screenshots/{name}_{int(time.time())}.png"
+            page.screenshot(path=path)
+            self.logger.info(f"Screenshot saved: {path}")
+        except Exception as e:
+            self.logger.error(f"Failed to capture screenshot: {e}")
+
+    def extract_embed(self, page: Page, episode_url: str, config: Dict[str, Any], retries: int = 2) -> Dict[str, Any]:
+        attempt = 0
+        bypass_js = config.get("bypass_javascript", False)
+        iframe_selectors = config.get("selectors", {}).get("episode", {}).get("iframe_selectors", [])
+
+        while attempt <= retries:
+            try:
+                if bypass_js:
+                    links = self._extract_player_via_iframe_bypass(page, episode_url)
+                    if links:
+                        return {'episode_url': episode_url, 'embed_url': links[0]}
+                else:
+                    page.goto(episode_url, timeout=Config.BROWSER_TIMEOUT)
+                    for selector in iframe_selectors:
+                        try:
+                            iframe_el = page.wait_for_selector(selector, timeout=10000)
+                            src = iframe_el.get_attribute("src")
+                            if src:
+                                return {'episode_url': episode_url, 'embed_url': src}
+                        except:
+                            continue
+                
+                attempt += 1
+                if attempt <= retries:
+                    time.sleep(2 ** attempt)
+            except Exception as e:
+                self.logger.warning(f"Attempt {attempt} failed for {episode_url}: {e}")
+                attempt += 1
+                if attempt <= retries:
+                    time.sleep(2 ** attempt)
+
+        self.capture_screenshot(page, "error_embed")
+        return {'episode_url': episode_url, 'error': 'Could not find embed URL'}
+
+    def _extract_via_iframe_bypass(self, page: Page, url: str, selector: str) -> Dict[str, Any]:
+        page.set_content(f'<html><body><iframe src="{url}" sandbox></iframe></body></html>')
+        page.wait_for_load_state("domcontentloaded")
+        
+        urls = []
+        for frame in page.frames:
+            if frame.url == url:
+                try:
+                    frame.wait_for_selector(selector, timeout=30000)
+                    elements = frame.query_selector_all(selector)
+                    for elem in elements:
+                        href = elem.get_attribute('href')
+                        if href:
+                            urls.append(urljoin(url, href))
+                except:
+                    continue
+        return {'url': url, 'episode_urls': urls}
+
+    def _extract_player_via_iframe_bypass(self, page: Page, url: str) -> List[str]:
+        page.set_content(f'<html><body><iframe src="{url}" sandbox></iframe></body></html>')
+        page.wait_for_load_state("domcontentloaded")
+        
+        srcs = []
+        for frame in page.frames:
+            if frame.url == url:
+                try:
+                    found = frame.evaluate("() => Array.from(document.querySelectorAll('iframe[src]')).map(i => i.src)")
+                    if found:
+                        srcs.extend(found)
+                except:
+                    continue
+        return list(set(srcs))
