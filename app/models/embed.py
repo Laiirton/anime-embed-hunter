@@ -1,7 +1,11 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
+
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 class Episode(db.Model):
     __tablename__ = 'episodes'
@@ -11,9 +15,9 @@ class Episode(db.Model):
     title = db.Column(db.String(255))
     url = db.Column(db.String(500), unique=True, nullable=False, index=True)
     embed_url = db.Column(db.Text)
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
-    anime = db.relationship('Anime', backref=db.backref('episodes', lazy=True))
+    anime = db.relationship('Anime', backref=db.backref('episodes', lazy='selectin'))
 
     def to_dict(self):
         return {
@@ -30,7 +34,7 @@ class Anime(db.Model):
     name = db.Column(db.String(255), nullable=False)
     url = db.Column(db.String(500), unique=True, nullable=False, index=True)
     item_type = db.Column(db.String(50), default='series') # series, movie
-    last_scanned = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_scanned = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
     def to_dict(self):
         return {
@@ -48,7 +52,8 @@ class EmbedRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     url = db.Column(db.String(500), unique=True, nullable=False, index=True)
     response_data = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
     def to_dict(self):
         import json

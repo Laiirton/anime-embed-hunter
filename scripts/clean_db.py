@@ -1,50 +1,76 @@
-import sqlite3
 import os
 import sys
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
-# Adiciona a raiz do projeto ao path para importar o helper de limpeza
-base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(base_dir)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
 
 from app.utils.helpers import clean_name
 
-def main():
-    db_path = os.path.join(base_dir, 'instance', 'anime_embeds.db')
-    if not os.path.exists(db_path):
-        print(f"[!] Banco de dados não encontrado em {db_path}")
-        return
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+def normalize_database_url(raw_url):
+    if not raw_url:
+        return None
+    url = raw_url.strip()
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+def build_database_url(base_dir):
+    load_dotenv(os.path.join(base_dir, ".env"))
+    remote = normalize_database_url(os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"))
+    if remote:
+        return remote
+    return f"sqlite:///{os.path.join(base_dir, 'instance', 'anime_embeds.db')}"
+
+
+def main():
+    base_dir = BASE_DIR
+    db_url = build_database_url(base_dir)
+
+    engine = create_engine(db_url, pool_pre_ping=True)
 
     print("[*] Iniciando limpeza dos nomes no banco de dados...")
 
-    # Clean Animes
-    cursor.execute("SELECT id, name FROM animes")
-    animes = cursor.fetchall()
     updated_animes = 0
-    for id, name in animes:
-        new_name = clean_name(name)
-        if new_name != name:
-            cursor.execute("UPDATE animes SET name = ? WHERE id = ?", (new_name, id))
-            updated_animes += 1
-
-    # Clean Episodes
-    cursor.execute("SELECT id, title FROM episodes")
-    episodes = cursor.fetchall()
     updated_episodes = 0
-    for id, title in episodes:
-        new_title = clean_name(title)
-        if new_title != title:
-            cursor.execute("UPDATE episodes SET title = ? WHERE id = ?", (new_title, id))
-            updated_episodes += 1
 
-    conn.commit()
-    conn.close()
+    try:
+        with engine.begin() as conn:
+            animes = conn.execute(text("SELECT id, name FROM animes")).fetchall()
+            for anime in animes:
+                new_name = clean_name(anime.name)
+                if new_name != anime.name:
+                    conn.execute(
+                        text("UPDATE animes SET name = :name WHERE id = :id"),
+                        {"name": new_name, "id": anime.id},
+                    )
+                    updated_animes += 1
 
-    print(f"[SUCCESS] Limpeza concluída!")
+            episodes = conn.execute(text("SELECT id, title FROM episodes")).fetchall()
+            for episode in episodes:
+                new_title = clean_name(episode.title)
+                if new_title != episode.title:
+                    conn.execute(
+                        text("UPDATE episodes SET title = :title WHERE id = :id"),
+                        {"title": new_title, "id": episode.id},
+                    )
+                    updated_episodes += 1
+
+    except SQLAlchemyError as exc:
+        print(f"[!] Erro durante limpeza: {exc}")
+        return
+
+    print("[SUCCESS] Limpeza concluída!")
     print(f" -> {updated_animes} animes limpos.")
     print(f" -> {updated_episodes} episódios limpos.")
+
 
 if __name__ == "__main__":
     main()

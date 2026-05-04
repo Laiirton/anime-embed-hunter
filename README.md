@@ -1,110 +1,110 @@
-# Anime Embed Hunter API 🚀
+# Anime Embed Hunter API
 
-Uma API profissional e modular para extração de links de embed de animes utilizando Flask e Playwright.
+API modular para extração de links de embed de animes com Flask + Playwright.
 
-## ✨ Funcionalidades
+## Funcionalidades
 
-- **Scraping Modular**: Suporte a múltiplos sites via arquivo de configuração JSON.
-- **Cache Inteligente**: Armazenamento de resultados no SQLite para respostas instantâneas.
-- **Segurança**: Proteção via API Key e Rate Limiting.
-- **Arquitetura Profissional**: Código organizado em camadas (API, Services, Models, Core).
-- **Robusto**: Tratamento de erros e tentativas (retries) automáticas.
+- Scraping modular via `configs.json`
+- Cache de respostas com TTL no banco (`embed_requests`)
+- Limpeza periódica de cache expirado em lote
+- Cache de busca em memória (`Flask-Caching`)
+- Segurança por API Key + Rate Limit por `API_KEY + IP`
+- Persistência compatível com SQLite local e Postgres/Supabase
+- Migrações versionadas com Alembic/Flask-Migrate
 
-## 🛠️ Tecnologias
+## Stack
 
-- [Python 3.10+](https://www.python.org/)
-- [Flask](https://flask.palletsprojects.com/)
-- [Playwright](https://playwright.dev/python/)
-- [SQLAlchemy](https://www.sqlalchemy.org/)
-- [Flask-Caching](https://flask-caching.readthedocs.io/)
-- [Flask-Limiter](https://flask-limiter.readthedocs.io/)
+- Python 3.10+
+- Flask / Flask-SQLAlchemy
+- Flask-Migrate (Alembic)
+- Playwright
+- Flask-Caching
+- Flask-Limiter
 
-## 🚀 Como Iniciar
-
-### 1. Instalação
+## Setup
 
 ```bash
-# Clone o repositório
-git clone https://github.com/seu-usuario/anime-embed-hunter.git
-cd anime-embed-hunter
-
-# Crie um ambiente virtual
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-
-# Instale as dependências
+venv\Scripts\activate  # Windows
 pip install -r requirements.txt
-
-# Instale os navegadores do Playwright
 playwright install chromium
 ```
 
-### 2. Configuração
+Copie `.env.example` para `.env` e configure pelo menos:
 
-1. Copie o arquivo `.env.example` para `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-2. Edite o `.env` com suas chaves e configurações.
+- `SECRET_KEY`
+- `API_KEY`
+- `DATABASE_URL` ou `SUPABASE_DB_URL` (opcional, se vazio usa SQLite local)
 
-### 3. Execução
+## Banco e Migrações
+
+A aplicação não executa mais `create_all()` automaticamente em runtime.
+
+```bash
+flask --app run.py db upgrade
+```
+
+Para criar nova migration:
+
+```bash
+flask --app run.py db revision -m "descricao"
+```
+
+## Executar API
 
 ```bash
 python run.py
 ```
 
-## 🔌 Endpoints
+## Endpoints
 
 ### `GET /search`
 
-Busca animes no catálogo local por nome.
+Busca no catálogo local/remoto (`animes.name`) com cache curto.
 
-**Parâmetros:**
-- `q` (obrigatório): Nome ou parte do nome do anime.
-
-**Exemplo:**
-```bash
-curl -H "X-API-KEY: 123" "http://localhost:5000/search?q=hack"
-```
+Parâmetros:
+- `q` obrigatório
 
 ### `GET /get-embed`
 
-Retorna os links de embed para uma URL fornecida (Suporta Home, Séries e Episódios).
-Possui sistema de **Cache On-Demand** de 24 horas.
+Retorna embeds para URL alvo.
 
-**Parâmetros:**
-- `url` (obrigatório): URL do site alvo.
-- `force` (opcional): Se `true`, ignora o cache e força um novo scrape.
+Parâmetros:
+- `url` obrigatório
+- `force` opcional (`true|false`) para ignorar cache e forçar novo scrape
 
----
+### `POST /reload-config`
 
-## 🛠️ Scripts de Automação
+Recarrega `configs.json` e limpa cache de busca.
 
-Localizados na pasta `/scripts`:
+### `POST /maintenance/cleanup-cache`
 
-- **`cataloguer.py`**: Indexa o site alvo inteiro e salva os animes no banco de dados.
-- **`check_db.py`**: Mostra estatísticas e dados atuais do banco de dados.
-- **`clean_db.py`**: Limpa e sanitiza todos os nomes no banco de dados.
+Executa limpeza manual de cache expirado (`embed_requests.expires_at`).
 
-Uso:
-```bash
-python scripts/cataloguer.py
-```
+## Scripts
 
-## 📁 Estrutura do Projeto
+- `python scripts/cataloguer.py`
+- `python scripts/check_db.py`
+- `python scripts/clean_db.py`
+- `python scripts/cleanup_expired_cache.py`
+
+Os scripts respeitam `DATABASE_URL` / `SUPABASE_DB_URL`; se não existir, usam SQLite local.
+O `cataloguer.py` tem retry/backoff para `429/5xx` e deduplica animes por URL.
+
+## Supabase (Postgres)
+
+Exemplo de `DATABASE_URL`:
 
 ```text
-app/
-├── api/        # Rotas e controladores
-├── core/       # Configurações globais
-├── models/     # Modelos de banco de dados
-├── services/   # Lógica do Scraper
-└── utils/      # Funções utilitárias (Limpeza, etc)
-scripts/        # Automação e manutenção
-data/           # Exportações de arquivos
-instance/       # Banco de dados SQLite
+postgresql://postgres:<senha>@<host>.supabase.co:5432/postgres
 ```
 
----
-Desenvolvido com ❤️ por Antigravity.
+O projeto normaliza automaticamente `postgres://` e `postgresql://` para `postgresql+psycopg://`.
+
+## Testes
+
+```bash
+pytest -q
+```
+
+CI em GitHub Actions: `.github/workflows/ci.yml`.

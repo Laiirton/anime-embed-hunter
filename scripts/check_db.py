@@ -1,61 +1,78 @@
-import sqlite3
 import os
-import sys
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
+
+def normalize_database_url(raw_url):
+    if not raw_url:
+        return None
+    url = raw_url.strip()
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+def build_database_url(base_dir):
+    load_dotenv(os.path.join(base_dir, ".env"))
+    remote = normalize_database_url(os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"))
+    if remote:
+        return remote
+    return f"sqlite:///{os.path.join(base_dir, 'instance', 'anime_embeds.db')}"
+
 
 def check():
-    # Caminho ajustado para rodar de dentro da pasta scripts/
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    db_path = os.path.join(base_dir, 'instance', 'anime_embeds.db')
-    
-    if not os.path.exists(db_path):
-        print(f"[!] Banco de dados não encontrado em {db_path}")
-        return
+    db_url = build_database_url(base_dir)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    engine = create_engine(db_url, pool_pre_ping=True)
 
     try:
-        print("\n" + "="*40)
-        print("       RELATÓRIO DO BANCO DE DADOS")
-        print("="*40)
+        with engine.connect() as conn:
+            print("\n" + "=" * 40)
+            print("       RELATÓRIO DO BANCO DE DADOS")
+            print("=" * 40)
+            print(f"[*] Banco conectado: {db_url.split('@')[-1]}")
 
-        # Estatísticas
-        cursor.execute("SELECT COUNT(*) FROM animes")
-        total_animes = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM episodes")
-        total_episodes = cursor.fetchone()[0]
+            total_animes = conn.execute(text("SELECT COUNT(*) FROM animes")).scalar_one()
+            total_episodes = conn.execute(text("SELECT COUNT(*) FROM episodes")).scalar_one()
 
-        print(f"[*] Total de Animes no Catálogo: {total_animes}")
-        print(f"[*] Total de Episódios/Embeds:   {total_episodes}")
+            print(f"[*] Total de Animes no Catálogo: {total_animes}")
+            print(f"[*] Total de Episódios/Embeds:   {total_episodes}")
 
-        # Animes
-        if total_animes > 0:
-            print("\n--- ÚLTIMOS ANIMES ADICIONADOS ---")
-            cursor.execute("SELECT id, name, last_scanned FROM animes ORDER BY id DESC LIMIT 5")
-            for row in cursor.fetchall():
-                print(f"ID: {row[0]} | {row[1]} (em {row[2]})")
-        
-        # Episódios
-        if total_episodes > 0:
-            print("\n--- ÚLTIMOS EMBEDS (VIDEOS) CAPTURADOS ---")
-            cursor.execute("""
-                SELECT e.title, e.embed_url, a.name 
-                FROM episodes e
-                LEFT JOIN animes a ON e.anime_id = a.id
-                ORDER BY e.id DESC LIMIT 5
-            """)
-            for row in cursor.fetchall():
-                anime_name = row[2] if row[2] else "Desconhecido"
-                print(f"Anime:  {anime_name}")
-                print(f"Vídeo:  {row[0]}")
-                print(f"Embed:  {row[1][:80]}...")
-                print("-" * 20)
+            if total_animes > 0:
+                print("\n--- ÚLTIMOS ANIMES ADICIONADOS ---")
+                rows = conn.execute(
+                    text("SELECT id, name, last_scanned FROM animes ORDER BY id DESC LIMIT 5")
+                ).fetchall()
+                for row in rows:
+                    print(f"ID: {row.id} | {row.name} (em {row.last_scanned})")
 
-    except sqlite3.OperationalError as e:
-        print(f"[!] Erro ao ler tabelas: {e}")
-    finally:
-        conn.close()
+            if total_episodes > 0:
+                print("\n--- ÚLTIMOS EMBEDS (VIDEOS) CAPTURADOS ---")
+                rows = conn.execute(
+                    text(
+                        """
+                        SELECT e.title, e.embed_url, a.name
+                        FROM episodes e
+                        LEFT JOIN animes a ON e.anime_id = a.id
+                        ORDER BY e.id DESC LIMIT 5
+                        """
+                    )
+                ).fetchall()
+                for row in rows:
+                    anime_name = row.name if row.name else "Desconhecido"
+                    preview = (row.embed_url or "")[:80]
+                    print(f"Anime:  {anime_name}")
+                    print(f"Vídeo:  {row.title}")
+                    print(f"Embed:  {preview}...")
+                    print("-" * 20)
+
+    except SQLAlchemyError as exc:
+        print(f"[!] Erro ao consultar banco: {exc}")
+
 
 if __name__ == "__main__":
     check()

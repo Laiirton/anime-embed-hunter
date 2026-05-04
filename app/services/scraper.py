@@ -3,9 +3,9 @@ import random
 import time
 import re
 import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any
 from urllib.parse import urljoin
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
 from app.core.config import Config
 
 class ScraperService:
@@ -58,7 +58,7 @@ class ScraperService:
             if title_selector:
                 try:
                     title = page.inner_text(title_selector, timeout=5000).strip()
-                except:
+                except PlaywrightTimeoutError:
                     title = page.title().split('-')[0].strip()
             else:
                 title = page.title().split('-')[0].strip()
@@ -115,7 +115,7 @@ class ScraperService:
                     if title_selector:
                         try:
                             ep_title = page.inner_text(title_selector, timeout=5000).strip()
-                        except:
+                        except PlaywrightTimeoutError:
                             ep_title = page.title().split('-')[0].strip()
                     else:
                         ep_title = page.title().split('-')[0].strip()
@@ -130,7 +130,7 @@ class ScraperService:
                                     'title': ep_title,
                                     'embed_url': src
                                 }
-                        except:
+                        except PlaywrightTimeoutError:
                             continue
                 
                 attempt += 1
@@ -162,7 +162,7 @@ class ScraperService:
                     match = re.search(r'de (\d+)', text)
                     if match:
                         total_pages = int(match.group(1))
-                except:
+                except (PlaywrightTimeoutError, ValueError):
                     pass
 
             elements = page.query_selector_all(item_selector)
@@ -201,7 +201,7 @@ class ScraperService:
                         href = elem.get_attribute('href')
                         if href:
                             urls.append(urljoin(url, href))
-                except:
+                except PlaywrightTimeoutError:
                     continue
         return {'url': url, 'episode_urls': urls}
 
@@ -216,6 +216,7 @@ class ScraperService:
                     found = frame.evaluate("() => Array.from(document.querySelectorAll('iframe[src]')).map(i => i.src)")
                     if found:
                         srcs.extend(found)
-                except:
+                except Exception as exc:
+                    self.logger.debug("Bypass extraction failed for frame %s: %s", frame.url, exc)
                     continue
         return list(set(srcs))

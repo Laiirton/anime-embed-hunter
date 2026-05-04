@@ -1,10 +1,12 @@
 import json
 import os
 import logging
+from urllib.parse import urlparse
 
 class SiteManager:
-    def __init__(self, config_path='configs.json'):
-        self.config_path = config_path
+    def __init__(self, config_path=None):
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        self.config_path = config_path or os.path.join(base_dir, "configs.json")
         self.configs = {}
         self.reload_configs()
 
@@ -23,9 +25,14 @@ class SiteManager:
             return False
 
     def get_config_for_url(self, url):
+        try:
+            hostname = (urlparse(url).hostname or "").lower()
+        except ValueError:
+            return None, None
+
         for site_key, cfg in self.configs.items():
-            domain = cfg.get('domain')
-            if domain and domain in url:
+            domain = (cfg.get('domain') or "").lower()
+            if domain and (hostname == domain or hostname.endswith(f".{domain}")):
                 return site_key, cfg
         return None, None
 
