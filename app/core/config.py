@@ -40,6 +40,7 @@ class Config:
     CACHE_DEFAULT_TIMEOUT = int(os.getenv("CACHE_DEFAULT_TIMEOUT", "300"))
     CACHE_REDIS_URL = os.getenv("CACHE_REDIS_URL")
     SEARCH_CACHE_TTL_SECONDS = int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "120"))
+    HOME_FEATURED_CACHE_TTL_SECONDS = int(os.getenv("HOME_FEATURED_CACHE_TTL_SECONDS", "180"))
     EMBED_CACHE_TTL_HOURS = int(os.getenv("EMBED_CACHE_TTL_HOURS", "24"))
     EMBED_CACHE_CLEANUP_INTERVAL_SECONDS = int(
         os.getenv("EMBED_CACHE_CLEANUP_INTERVAL_SECONDS", "900")
@@ -56,6 +57,8 @@ class Config:
     BROWSER_TIMEOUT = int(os.getenv("BROWSER_TIMEOUT", "60000"))
 
     SEARCH_LIMIT = int(os.getenv("SEARCH_LIMIT", "50"))
+    DEFAULT_PAGE_SIZE = int(os.getenv("DEFAULT_PAGE_SIZE", "30"))
+    MAX_PAGE_SIZE = int(os.getenv("MAX_PAGE_SIZE", "100"))
 
     USER_AGENTS = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",

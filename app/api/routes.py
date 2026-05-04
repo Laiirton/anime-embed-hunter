@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import hmac
 import json
 import logging
+import re
 from threading import Lock
 from urllib.parse import urlparse
 
@@ -11,7 +12,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import cache, limiter
-from app.models.embed import Anime, EmbedRequest, Episode, db
+from app.models.embed import Anime, EmbedRequest, Episode, Favorite, HistoryEntry, db
 from app.services.cache_maintenance import delete_expired_embed_cache
 from app.services.scraper import ScraperService
 from app.services.site_manager import site_manager
@@ -45,6 +46,158 @@ def _escape_like_pattern(value):
 
 def _build_search_cache_key(query):
     return f"search:{query.lower()}"
+
+
+def _build_home_featured_cache_key():
+    return "home:featured"
+
+
+def _parse_positive_int(value, default, minimum=1, maximum=1000):
+    if value is None or value == "":
+        return default
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+
+    return max(minimum, min(parsed, maximum))
+
+
+def _serialize_anime(anime):
+    slug = ""
+    marker = "/anime/"
+    if anime.url and marker in anime.url:
+        slug = anime.url.split(marker, 1)[1].strip("/")
+    return {
+        "id": anime.id,
+        "name": anime.name,
+        "url": anime.url,
+        "slug": slug,
+        "item_type": anime.item_type,
+        "last_scanned": anime.last_scanned.isoformat() if anime.last_scanned else None,
+        "episodes_count": len(anime.episodes) if hasattr(anime, "episodes") else 0,
+    }
+
+
+def _serialize_episode(episode):
+    payload = episode.to_dict()
+    payload["id"] = episode.id
+    payload["anime_id"] = episode.anime_id
+    if episode.anime:
+        payload["anime_name"] = episode.anime.name
+        payload["anime_url"] = episode.anime.url
+    else:
+        payload["anime_name"] = None
+        payload["anime_url"] = None
+    return payload
+
+
+def _resolve_profile_key(payload=None):
+    payload = payload or {}
+    raw = (
+        request.headers.get("X-USER-ID")
+        or request.args.get("user_id")
+        or payload.get("user_id")
+        or payload.get("profile_key")
+        or "default"
+    )
+    normalized = re.sub(r"[^a-zA-Z0-9_.-]", "-", str(raw).strip())
+    normalized = normalized[:120].strip("-")
+    return normalized or "default"
+
+
+def _infer_audio_filter_expression(filter_audio):
+    value = (filter_audio or "").strip().lower()
+    if value in {"dublado", "dub", "pt-br"}:
+        return Anime.name.ilike("%dublado%")
+    if value in {"legendado", "sub"}:
+        return ~Anime.name.ilike("%dublado%")
+    return None
+
+
+def _build_catalog_filters():
+    filters = []
+    unsupported = []
+
+    search = request.args.get("search")
+    if search and search != "0":
+        escaped = _escape_like_pattern(search.strip())
+        filters.append(Anime.name.ilike(f"%{escaped}%", escape="\\"))
+
+    letter = (request.args.get("filter_letter") or "").strip().lower()
+    if letter and letter != "0":
+        filters.append(Anime.name.ilike(f"{_escape_like_pattern(letter)}%", escape="\\"))
+
+    audio_filter = _infer_audio_filter_expression(request.args.get("filter_audio"))
+    if audio_filter is not None:
+        filters.append(audio_filter)
+
+    type_url = (request.args.get("type_url") or "").strip().lower()
+    if type_url and type_url not in {"animes", "anime", "catalogo"}:
+        unsupported.append("type_url")
+
+    if request.args.get("filter_genre_add"):
+        unsupported.append("filter_genre_add")
+    if request.args.get("filter_genre_del"):
+        unsupported.append("filter_genre_del")
+
+    return filters, sorted(set(unsupported))
+
+
+def _resolve_catalog_order():
+    order_key = (
+        request.args.get("order")
+        or request.args.get("filter_order")
+        or "name"
+    ).strip().lower()
+
+    mapping = {
+        "name": Anime.name.asc(),
+        "az": Anime.name.asc(),
+        "name_asc": Anime.name.asc(),
+        "za": Anime.name.desc(),
+        "name_desc": Anime.name.desc(),
+        "recent": Anime.last_scanned.desc(),
+        "updated": Anime.last_scanned.desc(),
+        "newest": Anime.last_scanned.desc(),
+    }
+    return order_key, mapping.get(order_key, Anime.name.asc())
+
+
+def _resolve_anime_by_slug(slug):
+    if not slug:
+        return None
+
+    normalized = slug.strip().strip("/")
+    if not normalized:
+        return None
+
+    full_url_candidate = f"https://animesdigital.org/anime/{normalized}"
+    anime = Anime.query.filter_by(url=full_url_candidate).first()
+    if anime:
+        return anime
+
+    if "/" in normalized:
+        suffix = f"/anime/{normalized}"
+        return Anime.query.filter(Anime.url.ilike(f"%{suffix}")).first()
+
+    return Anime.query.filter(Anime.url.ilike(f"%/anime/%/{normalized}")).first()
+
+
+def _resolve_episode_url_by_id(episode_id):
+    episode = (
+        Episode.query.filter(Episode.url.like(f"%/video/%/{episode_id}%"))
+        .order_by(Episode.last_updated.desc())
+        .first()
+    )
+    if episode:
+        return episode.url, episode
+
+    prefix = (request.args.get("prefix") or "a").strip().lower()
+    if not re.match(r"^[a-z0-9-]+$", prefix):
+        prefix = "a"
+    return f"https://animesdigital.org/video/{prefix}/{episode_id}", None
 
 
 def _is_valid_http_url(value):
@@ -281,6 +434,469 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None):
     except SQLAlchemyError as exc:
         db.session.rollback()
         logger.error("Error saving episodes to DB: %s", exc)
+
+
+def _scrape_home_featured(force_refresh=False):
+    cache_key = _build_home_featured_cache_key()
+    if not force_refresh:
+        cached_payload = cache.get(cache_key)
+        if cached_payload:
+            return {**cached_payload, "cached": True}, 200
+
+    home_url = request.args.get("url", "https://animesdigital.org/home").strip()
+    site_key, config = site_manager.get_config_for_url(home_url)
+    if not site_key:
+        return {"error": "URL domain not supported"}, 400
+
+    url_patterns = config.get("url_patterns", {})
+
+    try:
+        with ScraperService() as scraper:
+            context = scraper._get_context()
+            page = context.new_page()
+            try:
+                result = scraper.extract_episodes(page, home_url, config, selector_key="home")
+                if "error" in result:
+                    return {"error": result["error"]}, 502
+
+                featured = []
+                for item in result.get("episode_urls", []):
+                    item_url = item.get("url")
+                    if not item_url:
+                        continue
+
+                    item_type = "unknown"
+                    if scraper.match_pattern(item_url, url_patterns.get("episode", "")):
+                        item_type = "episode"
+                    elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")):
+                        item_type = "anime"
+
+                    featured.append(
+                        {
+                            "title": clean_name(item.get("title")),
+                            "url": item_url,
+                            "item_type": item_type,
+                        }
+                    )
+
+                payload = {
+                    "source": site_key,
+                    "url": home_url,
+                    "total_items": len(featured),
+                    "results": featured,
+                    "cached": False,
+                }
+                cache.set(
+                    cache_key,
+                    payload,
+                    timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 180),
+                )
+                return payload, 200
+            finally:
+                context.close()
+    except Exception as exc:
+        logger.error("Unexpected error scraping home featured: %s", exc)
+        return {"error": "Internal server error"}, 500
+
+
+@bp.route("/catalog", methods=["GET"])
+@limiter.limit("120 per minute")
+def get_catalog():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
+    max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
+    page = _parse_positive_int(request.args.get("page") or request.args.get("pagina"), 1, 1, 100000)
+    limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+
+    filters, unsupported_filters = _build_catalog_filters()
+    order_key, order_clause = _resolve_catalog_order()
+
+    try:
+        query = Anime.query
+        if filters:
+            query = query.filter(*filters)
+
+        total_results = query.count()
+        total_pages = max(1, (total_results + limit - 1) // limit)
+        if page > total_pages:
+            page = total_pages
+
+        items = (
+            query.order_by(order_clause)
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .all()
+        )
+
+        return jsonify(
+            {
+                "page": page,
+                "limit": limit,
+                "total_pages": total_pages,
+                "total_results": total_results,
+                "order": order_key,
+                "unsupported_filters": unsupported_filters,
+                "results": [_serialize_anime(anime) for anime in items],
+            }
+        ), 200
+    except SQLAlchemyError as exc:
+        logger.error("Catalog query failed: %s", exc)
+        return jsonify({"error": "Catalog query failed"}), 500
+
+
+@bp.route("/catalog/search", methods=["GET"])
+@limiter.limit("120 per minute")
+def catalog_search():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    query = (request.args.get("q") or request.args.get("search") or "").strip()
+    if not query:
+        return jsonify({"error": 'Query parameter "q" is required'}), 400
+
+    default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
+    max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
+    page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
+    limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+
+    escaped = _escape_like_pattern(query)
+    try:
+        query_builder = Anime.query.filter(Anime.name.ilike(f"%{escaped}%", escape="\\"))
+        total_results = query_builder.count()
+        total_pages = max(1, (total_results + limit - 1) // limit)
+        if page > total_pages:
+            page = total_pages
+
+        items = (
+            query_builder.order_by(Anime.name.asc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .all()
+        )
+
+        return jsonify(
+            {
+                "query": query,
+                "page": page,
+                "limit": limit,
+                "total_pages": total_pages,
+                "total_results": total_results,
+                "results": [_serialize_anime(anime) for anime in items],
+            }
+        ), 200
+    except SQLAlchemyError as exc:
+        logger.error("Catalog search failed: %s", exc)
+        return jsonify({"error": "Catalog search failed"}), 500
+
+
+@bp.route("/anime/<path:slug>", methods=["GET"])
+@limiter.limit("120 per minute")
+def get_anime(slug):
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    anime = _resolve_anime_by_slug(slug)
+    if not anime:
+        return jsonify({"error": "Anime not found"}), 404
+
+    default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
+    max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
+    page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
+    limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+
+    try:
+        episode_query = Episode.query.filter_by(anime_id=anime.id)
+        total_episodes = episode_query.count()
+        total_pages = max(1, (total_episodes + limit - 1) // limit)
+        if page > total_pages:
+            page = total_pages
+
+        episodes = (
+            episode_query.order_by(Episode.id.asc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+            .all()
+        )
+        payload = _serialize_anime(anime)
+        payload.update(
+            {
+                "page": page,
+                "limit": limit,
+                "episodes_total_pages": total_pages,
+                "episodes_total_results": total_episodes,
+                "episodes": [_serialize_episode(ep) for ep in episodes],
+            }
+        )
+        return jsonify(payload), 200
+    except SQLAlchemyError as exc:
+        logger.error("Anime lookup failed: %s", exc)
+        return jsonify({"error": "Anime lookup failed"}), 500
+
+
+@bp.route("/home/featured", methods=["GET"])
+@limiter.limit("30 per minute")
+def get_home_featured():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    force_refresh = _parse_bool(request.args.get("force"))
+    payload, status = _scrape_home_featured(force_refresh=force_refresh)
+    return jsonify(payload), status
+
+
+@bp.route("/episode/<episode_id>/players", methods=["GET"])
+@limiter.limit("20 per minute")
+def get_episode_players(episode_id):
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if not re.fullmatch(r"\d+", str(episode_id)):
+        return jsonify({"error": "Episode id must be numeric"}), 400
+
+    episode_url, episode = _resolve_episode_url_by_id(episode_id)
+    site_key, config = site_manager.get_config_for_url(episode_url)
+    if not site_key:
+        return jsonify({"error": "URL domain not supported"}), 400
+
+    try:
+        with ScraperService() as scraper:
+            context = scraper._get_context()
+            page = context.new_page()
+            try:
+                payload = scraper.extract_episode_players(page, episode_url, config)
+                if "error" in payload:
+                    return jsonify(payload), 502
+
+                payload["source"] = site_key
+                payload["episode_id"] = int(episode_id)
+                payload["cached"] = False
+                if episode:
+                    payload["database_episode"] = _serialize_episode(episode)
+                return jsonify(payload), 200
+            finally:
+                context.close()
+    except Exception as exc:
+        logger.error("Episode players lookup failed: %s", exc)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@bp.route("/lancamentos", methods=["GET"])
+@limiter.limit("120 per minute")
+def get_lancamentos():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
+    max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
+    page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
+    limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+
+    try:
+        query_builder = Episode.query.order_by(Episode.last_updated.desc(), Episode.id.desc())
+        total_results = query_builder.count()
+        total_pages = max(1, (total_results + limit - 1) // limit)
+        if page > total_pages:
+            page = total_pages
+
+        episodes = query_builder.offset((page - 1) * limit).limit(limit).all()
+        return jsonify(
+            {
+                "page": page,
+                "limit": limit,
+                "total_pages": total_pages,
+                "total_results": total_results,
+                "results": [_serialize_episode(ep) for ep in episodes],
+            }
+        ), 200
+    except SQLAlchemyError as exc:
+        logger.error("Failed to fetch releases: %s", exc)
+        return jsonify({"error": "Failed to fetch releases"}), 500
+
+
+@bp.route("/favorites", methods=["GET", "POST"])
+@limiter.limit("120 per minute")
+def favorites():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if request.method == "GET":
+        default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
+        max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
+        page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
+        limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+        profile_key = _resolve_profile_key()
+
+        try:
+            query_builder = Favorite.query.filter_by(profile_key=profile_key).order_by(
+                Favorite.updated_at.desc(),
+                Favorite.id.desc(),
+            )
+            total_results = query_builder.count()
+            total_pages = max(1, (total_results + limit - 1) // limit)
+            if page > total_pages:
+                page = total_pages
+
+            items = query_builder.offset((page - 1) * limit).limit(limit).all()
+            return jsonify(
+                {
+                    "user_id": profile_key,
+                    "page": page,
+                    "limit": limit,
+                    "total_pages": total_pages,
+                    "total_results": total_results,
+                    "results": [item.to_dict() for item in items],
+                }
+            ), 200
+        except SQLAlchemyError as exc:
+            logger.error("Failed to fetch favorites: %s", exc)
+            return jsonify({"error": "Failed to fetch favorites"}), 500
+
+    payload = request.get_json(silent=True) or {}
+    profile_key = _resolve_profile_key(payload)
+    anime_url = (payload.get("url") or payload.get("anime_url") or "").strip()
+    if not anime_url:
+        return jsonify({"error": 'Field "url" is required'}), 400
+    if not _is_valid_http_url(anime_url):
+        return jsonify({"error": "Invalid url"}), 400
+
+    image_url = (payload.get("image") or payload.get("image_url") or "").strip()
+    if image_url and not _is_valid_http_url(image_url):
+        return jsonify({"error": "Invalid image_url"}), 400
+
+    try:
+        anime = Anime.query.filter_by(url=anime_url).first()
+        anime_name = clean_name(payload.get("name") or payload.get("anime_name")) or (
+            anime.name if anime else None
+        )
+        if not anime_name:
+            return jsonify({"error": 'Field "name" is required when anime is unknown'}), 400
+
+        favorite = Favorite.query.filter_by(profile_key=profile_key, anime_url=anime_url).first()
+        if favorite:
+            favorite.anime_name = anime_name
+            favorite.image_url = image_url or favorite.image_url
+            favorite.anime_id = anime.id if anime else favorite.anime_id
+            favorite.updated_at = _utcnow()
+            created = False
+        else:
+            favorite = Favorite(
+                profile_key=profile_key,
+                anime_id=anime.id if anime else None,
+                anime_name=anime_name,
+                anime_url=anime_url,
+                image_url=image_url or None,
+            )
+            db.session.add(favorite)
+            created = True
+
+        db.session.commit()
+        return jsonify({"created": created, "favorite": favorite.to_dict()}), 201 if created else 200
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        logger.error("Failed to save favorite: %s", exc)
+        return jsonify({"error": "Failed to save favorite"}), 500
+
+
+@bp.route("/history", methods=["GET", "POST"])
+@limiter.limit("120 per minute")
+def history():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if request.method == "GET":
+        default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
+        max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
+        page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
+        limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+        profile_key = _resolve_profile_key()
+
+        try:
+            query_builder = HistoryEntry.query.filter_by(profile_key=profile_key).order_by(
+                HistoryEntry.last_seen.desc(),
+                HistoryEntry.id.desc(),
+            )
+            total_results = query_builder.count()
+            total_pages = max(1, (total_results + limit - 1) // limit)
+            if page > total_pages:
+                page = total_pages
+
+            items = query_builder.offset((page - 1) * limit).limit(limit).all()
+            return jsonify(
+                {
+                    "user_id": profile_key,
+                    "page": page,
+                    "limit": limit,
+                    "total_pages": total_pages,
+                    "total_results": total_results,
+                    "results": [item.to_dict() for item in items],
+                }
+            ), 200
+        except SQLAlchemyError as exc:
+            logger.error("Failed to fetch history: %s", exc)
+            return jsonify({"error": "Failed to fetch history"}), 500
+
+    payload = request.get_json(silent=True) or {}
+    profile_key = _resolve_profile_key(payload)
+    content_url = (payload.get("url") or payload.get("content_url") or "").strip()
+    if not content_url:
+        return jsonify({"error": 'Field "url" is required'}), 400
+    if not _is_valid_http_url(content_url):
+        return jsonify({"error": "Invalid url"}), 400
+
+    image_url = (payload.get("image") or payload.get("image_url") or "").strip()
+    if image_url and not _is_valid_http_url(image_url):
+        return jsonify({"error": "Invalid image_url"}), 400
+
+    try:
+        episode = Episode.query.filter_by(url=content_url).first()
+        anime = None
+
+        anime_url = (payload.get("anime_url") or "").strip()
+        if episode and episode.anime:
+            anime = episode.anime
+        elif anime_url:
+            anime = Anime.query.filter_by(url=anime_url).first()
+
+        title = clean_name(payload.get("title")) or (episode.title if episode else None)
+        if not title and anime:
+            title = anime.name
+        if not title:
+            return jsonify({"error": 'Field "title" is required when item is unknown'}), 400
+
+        history_entry = HistoryEntry.query.filter_by(
+            profile_key=profile_key,
+            content_url=content_url,
+        ).first()
+
+        if history_entry:
+            history_entry.title = title
+            history_entry.image_url = image_url or history_entry.image_url
+            history_entry.anime_id = anime.id if anime else history_entry.anime_id
+            history_entry.episode_id = episode.id if episode else history_entry.episode_id
+            history_entry.watch_count = max(1, int(history_entry.watch_count or 1)) + 1
+            history_entry.last_seen = _utcnow()
+            created = False
+        else:
+            history_entry = HistoryEntry(
+                profile_key=profile_key,
+                anime_id=anime.id if anime else None,
+                episode_id=episode.id if episode else None,
+                title=title,
+                content_url=content_url,
+                image_url=image_url or None,
+                watch_count=1,
+            )
+            db.session.add(history_entry)
+            created = True
+
+        db.session.commit()
+        return jsonify({"created": created, "history": history_entry.to_dict()}), 201 if created else 200
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        logger.error("Failed to save history: %s", exc)
+        return jsonify({"error": "Failed to save history"}), 500
 
 
 @bp.route("/search", methods=["GET"])

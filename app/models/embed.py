@@ -58,3 +58,68 @@ class EmbedRequest(db.Model):
     def to_dict(self):
         import json
         return json.loads(self.response_data)
+
+
+class Favorite(db.Model):
+    __tablename__ = "favorites"
+    __table_args__ = (
+        db.UniqueConstraint("profile_key", "anime_url", name="uq_favorites_profile_anime_url"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    profile_key = db.Column(db.String(120), nullable=False, index=True)
+    anime_id = db.Column(db.Integer, db.ForeignKey("animes.id"), nullable=True, index=True)
+    anime_name = db.Column(db.String(255), nullable=False)
+    anime_url = db.Column(db.String(500), nullable=False)
+    image_url = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False, index=True)
+
+    anime = db.relationship("Anime", backref=db.backref("favorites", lazy="dynamic"))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "profile_key": self.profile_key,
+            "anime_id": self.anime_id,
+            "anime_name": self.anime_name,
+            "anime_url": self.anime_url,
+            "image_url": self.image_url,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class HistoryEntry(db.Model):
+    __tablename__ = "history_entries"
+    __table_args__ = (
+        db.UniqueConstraint("profile_key", "content_url", name="uq_history_profile_content_url"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    profile_key = db.Column(db.String(120), nullable=False, index=True)
+    anime_id = db.Column(db.Integer, db.ForeignKey("animes.id"), nullable=True, index=True)
+    episode_id = db.Column(db.Integer, db.ForeignKey("episodes.id"), nullable=True, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    content_url = db.Column(db.String(500), nullable=False)
+    image_url = db.Column(db.Text, nullable=True)
+    watch_count = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    last_seen = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False, index=True)
+
+    anime = db.relationship("Anime", backref=db.backref("history_entries", lazy="dynamic"))
+    episode = db.relationship("Episode", backref=db.backref("history_entries", lazy="dynamic"))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "profile_key": self.profile_key,
+            "anime_id": self.anime_id,
+            "episode_id": self.episode_id,
+            "title": self.title,
+            "url": self.content_url,
+            "image_url": self.image_url,
+            "watch_count": self.watch_count,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+        }

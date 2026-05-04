@@ -145,6 +145,69 @@ class ScraperService:
         self.capture_screenshot(page, "error_embed")
         return {'episode_url': episode_url, 'error': 'Could not find embed URL'}
 
+    def extract_episode_players(self, page: Page, episode_url: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        iframe_selectors = config.get("selectors", {}).get("episode", {}).get("iframe_selectors", [])
+
+        try:
+            page.goto(episode_url, timeout=Config.BROWSER_TIMEOUT)
+            ep_title = self._extract_episode_title(page, config)
+
+            ordered_sources = []
+            seen = set()
+
+            for selector in iframe_selectors:
+                for iframe_el in page.query_selector_all(selector):
+                    src = (iframe_el.get_attribute("src") or "").strip()
+                    if src and src not in seen:
+                        ordered_sources.append({"selector": selector, "embed_url": src})
+                        seen.add(src)
+
+            generic_sources = page.evaluate(
+                """
+                () => {
+                    const candidates = Array.from(document.querySelectorAll("iframe[src]"));
+                    const score = (el) => {
+                        const text = ((el.id || "") + " " + (el.className || "")).toLowerCase();
+                        if (text.includes("player") || text.includes("tab-video")) return 2;
+                        const src = (el.getAttribute("src") || "").toLowerCase();
+                        if (src.includes("embed") || src.includes("player")) return 1;
+                        return 0;
+                    };
+                    return candidates
+                        .sort((a, b) => score(b) - score(a))
+                        .map((el) => (el.getAttribute("src") || "").trim())
+                        .filter(Boolean);
+                }
+                """
+            )
+
+            for src in generic_sources:
+                if src not in seen:
+                    ordered_sources.append({"selector": "iframe[src]", "embed_url": src})
+                    seen.add(src)
+
+            players = []
+            for index, item in enumerate(ordered_sources, start=1):
+                players.append(
+                    {
+                        "position": index,
+                        "label": f"Player {index}",
+                        "embed_url": item["embed_url"],
+                        "source_selector": item["selector"],
+                    }
+                )
+
+            return {
+                "episode_url": episode_url,
+                "title": ep_title,
+                "players": players,
+                "total_players": len(players),
+            }
+        except Exception as exc:
+            self.logger.error(f"Error extracting episode players from {episode_url}: {exc}")
+            self.capture_screenshot(page, "error_players")
+            return {"episode_url": episode_url, "error": str(exc), "players": [], "total_players": 0}
+
     def extract_directory(self, page: Page, url: str, config: Dict[str, Any]) -> Dict[str, Any]:
         selectors = config.get("selectors", {}).get("directory", {})
         item_selector = selectors.get('item_selector')
@@ -186,6 +249,15 @@ class ScraperService:
             self.logger.error(f"Error extracting directory from {url}: {e}")
             self.capture_screenshot(page, "error_directory")
             return {'error': str(e)}
+
+    def _extract_episode_title(self, page: Page, config: Dict[str, Any]) -> str:
+        title_selector = config.get("selectors", {}).get("episode", {}).get("title")
+        if title_selector:
+            try:
+                return page.inner_text(title_selector, timeout=5000).strip()
+            except PlaywrightTimeoutError:
+                pass
+        return page.title().split("-")[0].strip()
 
     def _extract_via_iframe_bypass(self, page: Page, url: str, selector: str) -> Dict[str, Any]:
         page.set_content(f'<html><body><iframe src="{url}" sandbox></iframe></body></html>')

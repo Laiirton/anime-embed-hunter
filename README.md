@@ -58,6 +58,81 @@ python run.py
 
 ## Endpoints
 
+### `GET /catalog`
+
+Catálogo paginado salvo no banco.
+
+Parâmetros opcionais:
+- `page` (ou `pagina`)
+- `limit`
+- `search`
+- `filter_letter`
+- `filter_audio` (`dublado`/`legendado`, heurístico pelo nome)
+- `order` (ou `filter_order`): `name`, `name_desc`, `recent`
+
+### `GET /catalog/search`
+
+Busca dedicada no catálogo.
+
+Parâmetros:
+- `q` obrigatório
+- `page`, `limit` opcionais
+
+### `GET /anime/:slug`
+
+Detalhes de um anime com episódios paginados.
+
+Exemplo de slug:
+- `a/one-piece`
+
+### `GET /home/featured`
+
+Raspa os destaques da home (`/home`) com cache curto.
+
+Parâmetros opcionais:
+- `force=true` para ignorar cache
+- `url` para sobrescrever URL da home (default `https://animesdigital.org/home`)
+
+### `GET /episode/:id/players`
+
+Extrai múltiplos players de um episódio.
+
+Parâmetros:
+- `:id` numérico (ex.: `135941`)
+- `prefix` opcional para montar fallback de URL (`a` por padrão)
+
+### `GET /lancamentos`
+
+Lista episódios por `last_updated` desc (mais recentes primeiro).
+
+Parâmetros opcionais:
+- `page`
+- `limit`
+
+### `GET/POST /favorites`
+
+Favoritos server-side por usuário lógico.
+
+Identificação de usuário:
+- Header `X-USER-ID` (recomendado), ou `user_id` via query/body
+
+`POST` body:
+- `url` obrigatório
+- `name` obrigatório se anime não existir no banco
+- `image_url` opcional
+
+### `GET/POST /history`
+
+Histórico server-side por usuário lógico.
+
+Identificação de usuário:
+- Header `X-USER-ID` (recomendado), ou `user_id` via query/body
+
+`POST` body:
+- `url` obrigatório
+- `title` obrigatório se item não existir no banco
+- `image_url` opcional
+
 ### `GET /search`
 
 Busca no catálogo local/remoto (`animes.name`) com cache curto.
