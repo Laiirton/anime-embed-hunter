@@ -3,7 +3,7 @@ import hmac
 import json
 import logging
 import re
-from threading import Lock
+from threading import Lock, Thread
 from urllib.parse import urlparse
 
 from flask import Blueprint, current_app, jsonify, request
@@ -442,32 +442,76 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
 
 def _scrape_home_featured(force_refresh=False):
     cache_key = _build_home_featured_cache_key()
+    persistent_key = f"persistent:{cache_key}"
     
-    # 1. Try RAM Cache (Fastest)
+    # 1. Tentar Cache em RAM (Resposta instantânea - 30 min)
     if not force_refresh:
         cached_payload = cache.get(cache_key)
         if cached_payload:
             return {**cached_payload, "cached": True, "cache_source": "ram"}, 200
 
-    home_url = request.args.get("url", "https://animesdigital.org/home").strip()
+    # 2. Tentar Cache no Banco de Dados (Resposta instantânea mesmo após restart)
+    db_entry = EmbedRequest.query.filter_by(url=persistent_key).first()
+    now = _utcnow()
     
-    # 2. Try DB Cache (Persistent after restart)
-    if not force_refresh:
-        db_cache = _load_embed_cache(f"persistent:{cache_key}")
-        if db_cache:
-            # We found it in DB. Let's update RAM cache for next time
-            cache.set(
-                cache_key,
-                db_cache,
-                timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800),
-            )
-            return {**db_cache, "cached": True, "cache_source": "db"}, 200
+    # Se encontramos no banco, vamos decidir se retornamos ou se precisamos de um refresh
+    if db_entry and not force_refresh:
+        try:
+            db_data = json.loads(db_entry.response_data)
+            ttl_seconds = current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800)
+            is_stale = (now - db_entry.timestamp).total_seconds() > ttl_seconds
+            
+            # Se os dados NÃO estão expirados (menos de 30 min), retorna e salva na RAM
+            if not is_stale:
+                cache.set(cache_key, db_data, timeout=ttl_seconds)
+                return {**db_data, "cached": True, "cache_source": "db"}, 200
+            
+            # Se estão "stale" (velhos), retornamos eles AGORA para o usuário não esperar,
+            # mas disparamos o scraper em background para atualizar para a próxima pessoa.
+            # Isso é o padrão "Stale-While-Revalidate"
+            def background_refresh(app_context, url, config, site_key):
+                with app_context:
+                    try:
+                        with ScraperService() as scraper:
+                            context = scraper._get_context()
+                            page = context.new_page()
+                            try:
+                                result = scraper.extract_episodes(page, url, config, selector_key="home")
+                                if "error" not in result:
+                                    featured = []
+                                    url_patterns = config.get("url_patterns", {})
+                                    for item in result.get("episode_urls", []):
+                                        item_url = item.get("url")
+                                        if not item_url: continue
+                                        item_type = "unknown"
+                                        if scraper.match_pattern(item_url, url_patterns.get("episode", "")): item_type = "episode"
+                                        elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")): item_type = "anime"
+                                        elif scraper.match_pattern(item_url, url_patterns.get("movie", "")): item_type = "movie"
+                                        featured.append({"title": clean_name(item.get("title")), "url": item_url, "item_type": item_type})
+                                    
+                                    new_payload = {"source": site_key, "url": url, "total_items": len(featured), "results": featured, "cached": False}
+                                    cache.set(cache_key, new_payload, timeout=ttl_seconds)
+                                    _save_to_embed_cache(persistent_key, new_payload)
+                            finally:
+                                context.close()
+                    except Exception as e:
+                        logger.error("Background refresh failed: %s", e)
 
+            home_url = request.args.get("url", "https://animesdigital.org/home").strip()
+            site_key, config = site_manager.get_config_for_url(home_url)
+            if site_key:
+                # Dispara a atualização em background
+                Thread(target=background_refresh, args=(current_app._get_current_object().app_context(), home_url, config, site_key)).start()
+            
+            return {**db_data, "cached": True, "cache_source": "db_stale"}, 200
+        except Exception as e:
+            logger.warning("Erro ao processar cache do banco para home: %s", e)
+
+    # 3. Se não tem nada (nem velho), aí não tem jeito, precisa esperar o scraper (Primeira vez do app)
+    home_url = request.args.get("url", "https://animesdigital.org/home").strip()
     site_key, config = site_manager.get_config_for_url(home_url)
     if not site_key:
         return {"error": "URL domain not supported"}, 400
-
-    url_patterns = config.get("url_patterns", {})
 
     try:
         with ScraperService() as scraper:
@@ -479,44 +523,20 @@ def _scrape_home_featured(force_refresh=False):
                     return {"error": result["error"]}, 502
 
                 featured = []
+                url_patterns = config.get("url_patterns", {})
                 for item in result.get("episode_urls", []):
                     item_url = item.get("url")
-                    if not item_url:
-                        continue
-
+                    if not item_url: continue
                     item_type = "unknown"
-                    if scraper.match_pattern(item_url, url_patterns.get("episode", "")):
-                        item_type = "episode"
-                    elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")):
-                        item_type = "anime"
-                    elif scraper.match_pattern(item_url, url_patterns.get("movie", "")):
-                        item_type = "movie"
+                    if scraper.match_pattern(item_url, url_patterns.get("episode", "")): item_type = "episode"
+                    elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")): item_type = "anime"
+                    elif scraper.match_pattern(item_url, url_patterns.get("movie", "")): item_type = "movie"
+                    featured.append({"title": clean_name(item.get("title")), "url": item_url, "item_type": item_type})
 
-                    featured.append(
-                        {
-                            "title": clean_name(item.get("title")),
-                            "url": item_url,
-                            "item_type": item_type,
-                        }
-                    )
-
-                payload = {
-                    "source": site_key,
-                    "url": home_url,
-                    "total_items": len(featured),
-                    "results": featured,
-                    "cached": False,
-                }
+                payload = {"source": site_key, "url": home_url, "total_items": len(featured), "results": featured, "cached": False}
                 
-                # Update RAM Cache
-                cache.set(
-                    cache_key,
-                    payload,
-                    timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800),
-                )
-                
-                # Update DB Cache (Persistent)
-                _save_to_embed_cache(f"persistent:{cache_key}", payload)
+                cache.set(cache_key, payload, timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800))
+                _save_to_embed_cache(persistent_key, payload)
                 
                 return payload, 200
             finally:
