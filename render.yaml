@@ -10,9 +10,11 @@ services:
       - key: FLASK_DEBUG
         value: "false"
       - key: DATABASE_URL
+        value: "INSIRA_URL_DO_SUPABASE_AQUI"
       - key: SECRET_KEY
         generateValue: true
       - key: API_KEY
+        value: "6767"
       - key: HEADLESS
         value: "true"
       - key: BROWSER_TIMEOUT
