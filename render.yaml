@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: anime-embed-hunter
+    runtime: python
+    buildCommand: "./render-build.sh"
+    startCommand: "gunicorn run:app"
+    envVars:
+      - key: FLASK_APP
+        value: run.py
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: DATABASE_URL
+      - key: SECRET_KEY
+        generateValue: true
+      - key: API_KEY
+      - key: HEADLESS
+        value: "true"
+      - key: BROWSER_TIMEOUT
+        value: "60000"
