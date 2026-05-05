@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: "./render-build.sh"
-    startCommand: "gunicorn -b 0.0.0.0:$PORT run:app"
+    startCommand: "gunicorn -b 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 run:app"
     envVars:
       - key: FLASK_APP
         value: run.py

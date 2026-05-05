@@ -28,7 +28,16 @@ class ScraperService:
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(
             headless=Config.HEADLESS,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            args=[
+                "--no-sandbox", 
+                "--disable-setuid-sandbox", 
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--no-first-run",
+                "--no-zygote",
+                "--single-process"
+            ]
         )
         return self
 
@@ -39,12 +48,15 @@ class ScraperService:
             self.playwright.stop()
 
     def _get_context(self) -> BrowserContext:
-        return self.browser.new_context(
+        context = self.browser.new_context(
             user_agent=random.choice(Config.USER_AGENTS),
-            viewport={"width": random.randint(1200, 1920), "height": random.randint(800, 1080)},
+            viewport={"width": 1280, "height": 720},
             locale="en-US",
             timezone_id="America/Sao_Paulo"
         )
+        # Bloqueia recursos pesados para economizar RAM no Render
+        context.route("**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,ttf,otf}", lambda route: route.abort())
+        return context
 
     def match_pattern(self, url: str, pattern: str) -> bool:
         if not pattern:
