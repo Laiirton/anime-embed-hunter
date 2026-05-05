@@ -2,6 +2,7 @@ services:
   - type: web
     name: anime-embed-hunter
     runtime: python
+    plan: free
     buildCommand: "./render-build.sh"
     startCommand: "gunicorn run:app"
     envVars:
