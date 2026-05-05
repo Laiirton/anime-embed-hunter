@@ -442,12 +442,27 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
 
 def _scrape_home_featured(force_refresh=False):
     cache_key = _build_home_featured_cache_key()
+    
+    # 1. Try RAM Cache (Fastest)
     if not force_refresh:
         cached_payload = cache.get(cache_key)
         if cached_payload:
-            return {**cached_payload, "cached": True}, 200
+            return {**cached_payload, "cached": True, "cache_source": "ram"}, 200
 
     home_url = request.args.get("url", "https://animesdigital.org/home").strip()
+    
+    # 2. Try DB Cache (Persistent after restart)
+    if not force_refresh:
+        db_cache = _load_embed_cache(f"persistent:{cache_key}")
+        if db_cache:
+            # We found it in DB. Let's update RAM cache for next time
+            cache.set(
+                cache_key,
+                db_cache,
+                timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800),
+            )
+            return {**db_cache, "cached": True, "cache_source": "db"}, 200
+
     site_key, config = site_manager.get_config_for_url(home_url)
     if not site_key:
         return {"error": "URL domain not supported"}, 400
@@ -492,11 +507,17 @@ def _scrape_home_featured(force_refresh=False):
                     "results": featured,
                     "cached": False,
                 }
+                
+                # Update RAM Cache
                 cache.set(
                     cache_key,
                     payload,
-                    timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 180),
+                    timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800),
                 )
+                
+                # Update DB Cache (Persistent)
+                _save_to_embed_cache(f"persistent:{cache_key}", payload)
+                
                 return payload, 200
             finally:
                 context.close()
