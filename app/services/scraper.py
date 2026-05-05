@@ -35,8 +35,7 @@ class ScraperService:
                 "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--no-first-run",
-                "--no-zygote",
-                "--single-process"
+                "--no-zygote"
             ]
         )
         return self
