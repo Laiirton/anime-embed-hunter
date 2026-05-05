@@ -34,6 +34,7 @@ class Anime(db.Model):
     name = db.Column(db.String(255), nullable=False)
     url = db.Column(db.String(500), unique=True, nullable=False, index=True)
     item_type = db.Column(db.String(50), default='series') # series, movie
+    cover_url = db.Column(db.String(500), nullable=True)
     last_scanned = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
     def to_dict(self):
@@ -42,6 +43,7 @@ class Anime(db.Model):
             'name': self.name,
             'url': self.url,
             'item_type': self.item_type,
+            'cover_url': self.cover_url,
             'last_scanned': self.last_scanned.isoformat() if self.last_scanned else None,
             'episodes_count': len(self.episodes) if hasattr(self, 'episodes') else 0
         }

@@ -76,6 +76,7 @@ def get_embed():
                             embed_info = scraper.extract_embed(page, ep_url, config)
                             if "title" not in embed_info:
                                 embed_info["title"] = item.get("title")
+                            embed_info["cover_url"] = item.get("cover_url")
                             embed_info["item_type"] = "episode"
                             embeds.append(embed_info)
                         elif scraper.match_pattern(ep_url, url_patterns.get("anime_main", "")):
@@ -83,6 +84,7 @@ def get_embed():
                                 {
                                     "title": item.get("title"),
                                     "url": ep_url,
+                                    "cover_url": item.get("cover_url"),
                                     "item_type": "series",
                                     "note": "Main page link",
                                 }
@@ -91,6 +93,7 @@ def get_embed():
                             embed_info = scraper.extract_embed(page, ep_url, config)
                             if "title" not in embed_info:
                                 embed_info["title"] = item.get("title")
+                            embed_info["cover_url"] = item.get("cover_url")
                             embed_info["item_type"] = "movie"
                             embeds.append(embed_info)
 

@@ -60,8 +60,11 @@ def _scrape_home_featured(force_refresh=False):
                                         if scraper.match_pattern(item_url, url_patterns.get("episode", "")): item_type = "episode"
                                         elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")): item_type = "anime"
                                         elif scraper.match_pattern(item_url, url_patterns.get("movie", "")): item_type = "movie"
-                                        featured.append({"title": clean_name(item.get("title")), "url": item_url, "item_type": item_type})
+                                        featured.append({"title": clean_name(item.get("title")), "url": item_url, "cover_url": item.get("cover_url"), "item_type": item_type})
                                     
+                                    from app.services.cover_service import populate_covers_for_dicts
+                                    populate_covers_for_dicts(featured)
+
                                     new_payload = {"source": site_key, "url": url, "total_items": len(featured), "results": featured, "cached": False}
                                     cache.set(cache_key, new_payload, timeout=ttl_seconds)
                                     _save_to_embed_cache(persistent_key, new_payload)
@@ -102,7 +105,10 @@ def _scrape_home_featured(force_refresh=False):
                     if scraper.match_pattern(item_url, url_patterns.get("episode", "")): item_type = "episode"
                     elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")): item_type = "anime"
                     elif scraper.match_pattern(item_url, url_patterns.get("movie", "")): item_type = "movie"
-                    featured.append({"title": clean_name(item.get("title")), "url": item_url, "item_type": item_type})
+                    featured.append({"title": clean_name(item.get("title")), "url": item_url, "cover_url": item.get("cover_url"), "item_type": item_type})
+
+                from app.services.cover_service import populate_covers_for_dicts
+                populate_covers_for_dicts(featured)
 
                 payload = {"source": site_key, "url": home_url, "total_items": len(featured), "results": featured, "cached": False}
                 

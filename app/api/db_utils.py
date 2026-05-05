@@ -126,12 +126,14 @@ def save_animes_to_db(anime_list):
         for item in anime_list:
             name = clean_name(item.get("name"))
             url = item.get("url")
+            cover_url = item.get("cover_url")
 
             if not name or not url:
                 continue
             deduped[url] = {
                 "name": name,
                 "url": url,
+                "cover_url": cover_url,
                 "last_scanned": now,
             }
 
@@ -146,6 +148,7 @@ def save_animes_to_db(anime_list):
                 index_elements=["url"],
                 set_={
                     "name": stmt.excluded.name,
+                    "cover_url": db.func.coalesce(stmt.excluded.cover_url, Anime.cover_url),
                     "last_scanned": stmt.excluded.last_scanned,
                 },
             )
@@ -161,11 +164,14 @@ def save_animes_to_db(anime_list):
                 if anime:
                     anime.name = row["name"]
                     anime.last_scanned = row["last_scanned"]
+                    if row["cover_url"]:
+                        anime.cover_url = row["cover_url"]
                 else:
                     db.session.add(
                         Anime(
                             name=row["name"],
                             url=row["url"],
+                            cover_url=row["cover_url"],
                             last_scanned=row["last_scanned"],
                         )
                     )

@@ -36,6 +36,10 @@ def search_animes():
             .limit(current_app.config.get("SEARCH_LIMIT", 50))
             .all()
         )
+        
+        from app.services.cover_service import populate_covers
+        populate_covers(results)
+        
         payload = {
             "query": query,
             "total_found": len(results),

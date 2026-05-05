@@ -47,6 +47,9 @@ def get_catalog():
             .limit(limit)
             .all()
         )
+        
+        from app.services.cover_service import populate_covers
+        populate_covers(items)
 
         return jsonify(
             {
@@ -93,6 +96,9 @@ def catalog_search():
             .limit(limit)
             .all()
         )
+
+        from app.services.cover_service import populate_covers
+        populate_covers(items)
 
         return jsonify(
             {

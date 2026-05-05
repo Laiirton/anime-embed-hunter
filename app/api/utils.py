@@ -47,6 +47,7 @@ def _serialize_anime(anime):
         "name": anime.name,
         "url": anime.url,
         "slug": slug,
+        "cover_url": getattr(anime, "cover_url", None),
         "item_type": anime.item_type,
         "last_scanned": anime.last_scanned.isoformat() if anime.last_scanned else None,
         "episodes_count": len(anime.episodes) if hasattr(anime, "episodes") else 0,
