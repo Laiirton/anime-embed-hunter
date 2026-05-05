@@ -207,3 +207,21 @@ O que faz:
 Body:
 
 - Sem body obrigatorio.
+
+---
+
+## 15) `GET /health`
+
+O que faz:
+
+- Health check da API. Não requer autenticação.
+- Retorna status (`"ok"`) e timestamp atual em ISO 8601.
+
+Resposta (`200`):
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-05-05T02:15:00"
+}
+```

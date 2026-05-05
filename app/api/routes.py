@@ -1133,3 +1133,12 @@ def cleanup_cache():
 
     deleted = _cleanup_expired_embed_cache_if_needed(force=True)
     return jsonify({"deleted_rows": deleted}), 200
+
+
+@bp.route("/health", methods=["GET"])
+@limiter.exempt
+def health():
+    return jsonify({
+        "status": "ok",
+        "timestamp": _utcnow().isoformat(),
+    }), 200
