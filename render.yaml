@@ -15,7 +15,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: API_KEY
-        placeholder: "Sua chave de API super secreta"
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: anime-db
