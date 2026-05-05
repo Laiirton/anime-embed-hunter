@@ -11,7 +11,7 @@ services:
       - key: FLASK_DEBUG
         value: "false"
       - key: DATABASE_URL
-        value: "INSIRA_URL_DO_SUPABASE_AQUI"
+        value: "postgresql://postgres.oynbnwlwypckquukuxrw:Miaumiau66.@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
       - key: SECRET_KEY
         generateValue: true
       - key: API_KEY
