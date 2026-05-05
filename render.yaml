@@ -20,3 +20,5 @@ services:
         value: "true"
       - key: BROWSER_TIMEOUT
         value: "60000"
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "/opt/render/project/src/.cache/ms-playwright"

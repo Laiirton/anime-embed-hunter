@@ -3,6 +3,8 @@ import random
 import time
 import re
 import os
+import threading
+import asyncio
 from typing import List, Dict, Any
 from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
@@ -15,8 +17,19 @@ class ScraperService:
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
+        # Resolve o erro "Playwright Sync API inside the asyncio loop"
+        # Garante que esta thread não tenha um loop de eventos ativo que conflite com o Sync do Playwright
+        try:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+        except Exception:
+            pass
+
         self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(headless=Config.HEADLESS)
+        self.browser = self.playwright.chromium.launch(
+            headless=Config.HEADLESS,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+        )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -141,7 +154,7 @@ class ScraperService:
                 attempt += 1
                 if attempt <= retries:
                     time.sleep(2 ** attempt)
-
+        
         self.capture_screenshot(page, "error_embed")
         return {'episode_url': episode_url, 'error': 'Could not find embed URL'}
 
@@ -217,7 +230,7 @@ class ScraperService:
             page.goto(url, timeout=Config.BROWSER_TIMEOUT)
             page.wait_for_selector(item_selector, timeout=30000)
 
-            # Extract pagination info (e.g., "Página 1 de 81")
+            # Extract pagination info
             total_pages = 1
             if pagination_selector:
                 try:
