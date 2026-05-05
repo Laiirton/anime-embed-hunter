@@ -21,4 +21,6 @@ services:
       - key: BROWSER_TIMEOUT
         value: "60000"
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "/opt/render/project/src/.cache/ms-playwright"
+        value: "/opt/render/project/.render/ms-playwright"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
