@@ -41,19 +41,19 @@ Copie `.env.example` para `.env` e configure pelo menos:
 A aplicação não executa mais `create_all()` automaticamente em runtime.
 
 ```bash
-flask --app run.py db upgrade
+flask --app wsgi.py db upgrade
 ```
 
 Para criar nova migration:
 
 ```bash
-flask --app run.py db revision -m "descricao"
+flask --app wsgi.py db revision -m "descricao"
 ```
 
 ## Executar API
 
 ```bash
-python run.py
+python wsgi.py
 ```
 
 ## Endpoints
