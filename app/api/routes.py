@@ -374,7 +374,7 @@ def save_animes_to_db(anime_list):
         logger.error("Error saving animes to DB: %s", exc)
 
 
-def _get_or_create_anime(anime_url, anime_title=None):
+def _get_or_create_anime(anime_url, anime_title=None, item_type="series"):
     anime = Anime.query.filter_by(url=anime_url).first()
 
     if not anime:
@@ -382,6 +382,7 @@ def _get_or_create_anime(anime_url, anime_title=None):
         anime = Anime(
             name=safe_title or "Unknown Anime",
             url=anime_url,
+            item_type=item_type,
             last_scanned=_utcnow(),
         )
         db.session.add(anime)
@@ -392,15 +393,18 @@ def _get_or_create_anime(anime_url, anime_title=None):
         safe_title = clean_name(anime_title)
         if safe_title:
             anime.name = safe_title
+    
+    if item_type and anime.item_type != item_type:
+        anime.item_type = item_type
 
     return anime
 
 
-def save_episodes_to_db(episode_list, anime_url=None, anime_title=None):
+def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_type="series"):
     try:
         anime = None
         if anime_url:
-            anime = _get_or_create_anime(anime_url, anime_title=anime_title)
+            anime = _get_or_create_anime(anime_url, anime_title=anime_title, item_type=item_type)
 
         for item in episode_list:
             title = clean_name(item.get("title"))
@@ -470,6 +474,8 @@ def _scrape_home_featured(force_refresh=False):
                         item_type = "episode"
                     elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")):
                         item_type = "anime"
+                    elif scraper.match_pattern(item_url, url_patterns.get("movie", "")):
+                        item_type = "movie"
 
                     featured.append(
                         {
@@ -997,10 +1003,16 @@ def get_embed():
                                 {
                                     "title": item.get("title"),
                                     "url": ep_url,
-                                    "item_type": "series_or_movie",
+                                    "item_type": "series",
                                     "note": "Main page link",
                                 }
                             )
+                        elif scraper.match_pattern(ep_url, url_patterns.get("movie", "")):
+                            embed_info = scraper.extract_embed(page, ep_url, config)
+                            if "title" not in embed_info:
+                                embed_info["title"] = item.get("title")
+                            embed_info["item_type"] = "movie"
+                            embeds.append(embed_info)
 
                     save_episodes_to_db(embeds)
 
@@ -1092,6 +1104,23 @@ def get_embed():
 
                     response_payload = {
                         "type": "single_episode",
+                        "title": clean_name(embed_info.get("title")),
+                        "url": target_url,
+                        "embed_url": embed_info.get("embed_url"),
+                        "cached": False,
+                    }
+
+                elif scraper.match_pattern(target_url, url_patterns.get("movie", "")):
+                    embed_info = scraper.extract_embed(page, target_url, config)
+                    save_episodes_to_db(
+                        [embed_info],
+                        anime_url=target_url,
+                        anime_title=embed_info.get("title"),
+                        item_type="movie"
+                    )
+
+                    response_payload = {
+                        "type": "single_movie",
                         "title": clean_name(embed_info.get("title")),
                         "url": target_url,
                         "embed_url": embed_info.get("embed_url"),

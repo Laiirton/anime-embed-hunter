@@ -4,7 +4,8 @@
     "url_patterns": {
       "home": "^https?://animesdigital\\.org/home/?$",
       "anime_main": "^https?://animesdigital\\.org/anime/[a-z]/[\\w-]+/?$",
-      "episode": "^https?://animesdigital\\.org/video/[a-z]/\\d+/?$"
+      "episode": "^https?://animesdigital\\.org/video/[a-z]/\\d+/?$",
+      "movie": "^https?://animesdigital\\.org/filme/[\\w-]+/?$"
     },
     "selectors": {
       "home": {
