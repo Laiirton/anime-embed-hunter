@@ -9,6 +9,8 @@ from typing import List, Dict, Any
 from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
 from app.core.config import Config
+from pydantic import BaseModel
+
 
 class ScraperService:
     def __init__(self):
@@ -62,7 +64,9 @@ class ScraperService:
             return False
         return re.match(pattern, url) is not None
 
-    def extract_episodes(self, page: Page, url: str, config: Dict[str, Any], selector_key: str = 'anime_main') -> Dict[str, Any]:
+    def extract_episodes(self, page: Page, url: str, config: Any, selector_key: str = 'anime_main') -> Dict[str, Any]:
+        if isinstance(config, BaseModel):
+            config = config.model_dump()
         bypass_js = config.get("bypass_javascript", False)
         selectors = config.get("selectors", {}).get(selector_key, {})
         episodes_selector = selectors.get('episodes_section')
@@ -120,7 +124,9 @@ class ScraperService:
         except Exception as e:
             self.logger.error(f"Failed to capture screenshot: {e}")
 
-    def extract_embed(self, page: Page, episode_url: str, config: Dict[str, Any], retries: int = 2) -> Dict[str, Any]:
+    def extract_embed(self, page: Page, episode_url: str, config: Any, retries: int = 2) -> Dict[str, Any]:
+        if isinstance(config, BaseModel):
+            config = config.model_dump()
         attempt = 0
         bypass_js = config.get("bypass_javascript", False)
         iframe_selectors = config.get("selectors", {}).get("episode", {}).get("iframe_selectors", [])
@@ -169,7 +175,9 @@ class ScraperService:
         self.capture_screenshot(page, "error_embed")
         return {'episode_url': episode_url, 'error': 'Could not find embed URL'}
 
-    def extract_episode_players(self, page: Page, episode_url: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_episode_players(self, page: Page, episode_url: str, config: Any) -> Dict[str, Any]:
+        if isinstance(config, BaseModel):
+            config = config.model_dump()
         iframe_selectors = config.get("selectors", {}).get("episode", {}).get("iframe_selectors", [])
 
         try:

@@ -52,14 +52,15 @@ def _scrape_home_featured(force_refresh=False):
                                 result = scraper.extract_episodes(page, url, config, selector_key="home")
                                 if "error" not in result:
                                     featured = []
-                                    url_patterns = config.get("url_patterns", {})
+                                    # Acesso ao atributo Pydantic 'url_patterns', que é um dict
+                                    url_patterns = getattr(config, 'url_patterns', {})
                                     for item in result.get("episode_urls", []):
                                         item_url = item.get("url")
                                         if not item_url: continue
                                         item_type = "unknown"
-                                        if scraper.match_pattern(item_url, url_patterns.get("episode", "")): item_type = "episode"
-                                        elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")): item_type = "anime"
-                                        elif scraper.match_pattern(item_url, url_patterns.get("movie", "")): item_type = "movie"
+                                        if scraper.match_pattern(item_url, url_patterns.get('episode', "")): item_type = "episode"
+                                        elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
+                                        elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
                                         featured.append({"title": clean_name(item.get("title")), "url": item_url, "cover_url": item.get("cover_url"), "item_type": item_type})
                                     
                                     from app.services.cover_service import populate_covers_for_dicts
@@ -97,14 +98,14 @@ def _scrape_home_featured(force_refresh=False):
                     return {"error": result["error"]}, 502
 
                 featured = []
-                url_patterns = config.get("url_patterns", {})
+                url_patterns = getattr(config, 'url_patterns', {})
                 for item in result.get("episode_urls", []):
                     item_url = item.get("url")
                     if not item_url: continue
                     item_type = "unknown"
-                    if scraper.match_pattern(item_url, url_patterns.get("episode", "")): item_type = "episode"
-                    elif scraper.match_pattern(item_url, url_patterns.get("anime_main", "")): item_type = "anime"
-                    elif scraper.match_pattern(item_url, url_patterns.get("movie", "")): item_type = "movie"
+                    if scraper.match_pattern(item_url, url_patterns.get('episode', "")): item_type = "episode"
+                    elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
+                    elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
                     featured.append({"title": clean_name(item.get("title")), "url": item_url, "cover_url": item.get("cover_url"), "item_type": item_type})
 
                 from app.services.cover_service import populate_covers_for_dicts
