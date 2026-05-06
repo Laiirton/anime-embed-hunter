@@ -48,6 +48,7 @@ def get_episode_players(episode_id):
                     payload["database_episode"] = _serialize_episode(episode)
                 return jsonify(payload), 200
             finally:
+                page.close()
                 context.close()
     except Exception as exc:
         logger.error("Episode players lookup failed: %s", exc)

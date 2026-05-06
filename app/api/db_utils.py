@@ -77,11 +77,16 @@ def get_embed_with_swr(url, ttl_hours=24):
     if not entry:
         return None, "miss"
     
-    # Verifica se expirou
     if entry.expires_at < _utcnow():
-        return entry.data, "stale" # Dados obsoletos, disparar background task
+        try:
+            return json.loads(entry.response_data), "stale" # Dados obsoletos, disparar background task
+        except (json.JSONDecodeError, TypeError):
+            return None, "miss"
         
-    return entry.data, "fresh" # Dados frescos
+    try:
+        return json.loads(entry.response_data), "fresh" # Dados frescos
+    except (json.JSONDecodeError, TypeError):
+        return None, "miss"
 
 def _save_to_embed_cache(url, data):
     ttl_hours = max(1, int(current_app.config.get("EMBED_CACHE_TTL_HOURS", 24)))

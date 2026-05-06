@@ -9,6 +9,9 @@ def utcnow():
 
 class Episode(db.Model):
     __tablename__ = 'episodes'
+    __table_args__ = (
+        db.Index('idx_episodes_anime_id', 'anime_id'),
+    )
     
     id = db.Column(db.Integer, primary_key=True)
     anime_id = db.Column(db.Integer, db.ForeignKey('animes.id'), nullable=True)
