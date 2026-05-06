@@ -130,8 +130,9 @@ class ScraperService:
             page.wait_for_selector("div.header_title", timeout=30000)
 
             # Use JS to extract sections based on text content
+            info_selector = config.get("selectors", {}).get("home", {}).get("item_info_selector", ".number")
             data = page.evaluate("""
-                (sectionsConfig) => {
+                ({sectionsConfig, infoSelector}) => {
                     const results = {};
                     const headers = document.querySelectorAll('div.header_title');
                     headers.forEach(header => {
@@ -141,11 +142,14 @@ class ScraperService:
                             if (title.includes(searchTitle.toUpperCase())) {
                                 const container = header.nextElementSibling;
                                 if (container) {
-                                    const links = Array.from(container.querySelectorAll('a')).map(a => ({
-                                        title: a.getAttribute('title') || a.innerText.trim(),
-                                        url: a.href,
-                                        // We'll populate cover_url and item_type in the API layer
-                                    }));
+                                    const links = Array.from(container.querySelectorAll('a')).map(a => {
+                                        const infoElem = a.querySelector(infoSelector);
+                                        return {
+                                            title: a.getAttribute('title') || a.innerText.trim(),
+                                            url: a.href,
+                                            info: infoElem ? infoElem.innerText.trim() : null
+                                        };
+                                    });
                                     results[key] = links;
                                 }
                                 break;
@@ -154,7 +158,7 @@ class ScraperService:
                     });
                     return results;
                 }
-            """, home_sections_config)
+            """, {"sectionsConfig": home_sections_config, "infoSelector": info_selector})
 
             return {
                 "url": url,

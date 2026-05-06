@@ -10,6 +10,7 @@
     "selectors": {
       "home": {
         "episodes_section": ".itemE a, .itemA a",
+        "item_info_selector": ".number",
         "home_sections": {
           "releases": "LANÇAMENTOS",
           "episodes": "ÚLTIMOS EPISÓDIOS",

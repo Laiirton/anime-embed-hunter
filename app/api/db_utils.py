@@ -149,6 +149,7 @@ def save_animes_to_db(anime_list):
                 "name": name,
                 "url": url,
                 "cover_url": cover_url,
+                "latest_episode_info": item.get("info") or item.get("latest_episode_info"),
                 "last_scanned": now,
             }
 
@@ -164,6 +165,7 @@ def save_animes_to_db(anime_list):
                 set_={
                     "name": stmt.excluded.name,
                     "cover_url": db.func.coalesce(stmt.excluded.cover_url, Anime.cover_url),
+                    "latest_episode_info": stmt.excluded.latest_episode_info,
                     "last_scanned": stmt.excluded.last_scanned,
                 },
             )
@@ -181,12 +183,15 @@ def save_animes_to_db(anime_list):
                     anime.last_scanned = row["last_scanned"]
                     if row["cover_url"]:
                         anime.cover_url = row["cover_url"]
+                    if row["latest_episode_info"]:
+                        anime.latest_episode_info = row["latest_episode_info"]
                 else:
                     db.session.add(
                         Anime(
                             name=row["name"],
                             url=row["url"],
                             cover_url=row["cover_url"],
+                            latest_episode_info=row["latest_episode_info"],
                             last_scanned=row["last_scanned"],
                         )
                     )
@@ -196,7 +201,7 @@ def save_animes_to_db(anime_list):
         db.session.rollback()
         logger.error("Error saving animes to DB: %s", exc)
 
-def _get_or_create_anime(anime_url, anime_title=None, item_type="series"):
+def _get_or_create_anime(anime_url, anime_title=None, item_type="series", latest_episode_info=None):
     anime = Anime.query.filter_by(url=anime_url).first()
 
     if not anime:
@@ -205,6 +210,7 @@ def _get_or_create_anime(anime_url, anime_title=None, item_type="series"):
             name=safe_title or "Unknown Anime",
             url=anime_url,
             item_type=item_type,
+            latest_episode_info=latest_episode_info,
             last_scanned=_utcnow(),
         )
         db.session.add(anime)
@@ -218,6 +224,9 @@ def _get_or_create_anime(anime_url, anime_title=None, item_type="series"):
     
     if item_type and anime.item_type != item_type:
         anime.item_type = item_type
+    
+    if latest_episode_info:
+        anime.latest_episode_info = latest_episode_info
 
     return anime
 
@@ -231,14 +240,18 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
             title = clean_name(item.get("title"))
             url = item.get("episode_url") or item.get("url")
             embed_url = item.get("embed_url")
+            info = item.get("info")
 
-            if not url or not embed_url:
+            if not url:
                 continue
 
             ep = Episode.query.filter_by(url=url).first()
             if ep:
                 ep.title = title
-                ep.embed_url = embed_url
+                if embed_url:
+                    ep.embed_url = embed_url
+                if info:
+                    ep.info = info
                 ep.last_updated = _utcnow()
                 if anime and ep.anime_id != anime.id:
                     ep.anime_id = anime.id
@@ -247,6 +260,7 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
                     title=title,
                     url=url,
                     embed_url=embed_url,
+                    info=info,
                     anime_id=anime.id if anime else None,
                     last_updated=_utcnow(),
                 )

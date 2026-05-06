@@ -33,7 +33,8 @@ def _process_featured_items(items, scraper, url_patterns):
             "title": clean_name(item.get("title")),
             "url": item_url,
             "cover_url": item.get("cover_url"),
-            "item_type": item_type
+            "item_type": item_type,
+            "info": item.get("info")
         })
     return processed
 
@@ -106,6 +107,16 @@ def _scrape_home_featured(force_refresh=False):
                                     from app.services.cover_service import populate_covers_for_dicts
                                     populate_covers_for_dicts(all_items_to_populate)
 
+                                    # Save to DB
+                                    from app.api.db_utils import save_animes_to_db, save_episodes_to_db
+                                    animes_to_save = [item for item in all_items_to_populate if item["item_type"] in ["anime", "movie"]]
+                                    episodes_to_save = [item for item in all_items_to_populate if item["item_type"] == "episode"]
+                                    
+                                    if animes_to_save:
+                                        save_animes_to_db(animes_to_save)
+                                    if episodes_to_save:
+                                        save_episodes_to_db(episodes_to_save)
+
                                     new_payload = {
                                         "source": site_key, 
                                         "url": url, 
@@ -160,6 +171,16 @@ def _scrape_home_featured(force_refresh=False):
 
                 from app.services.cover_service import populate_covers_for_dicts
                 populate_covers_for_dicts(all_items_to_populate)
+
+                # Save to DB
+                from app.api.db_utils import save_animes_to_db, save_episodes_to_db
+                animes_to_save = [item for item in all_items_to_populate if item["item_type"] in ["anime", "movie"]]
+                episodes_to_save = [item for item in all_items_to_populate if item["item_type"] == "episode"]
+                
+                if animes_to_save:
+                    save_animes_to_db(animes_to_save)
+                if episodes_to_save:
+                    save_episodes_to_db(episodes_to_save)
 
                 payload = {
                     "source": site_key, 
