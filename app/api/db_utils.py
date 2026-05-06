@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.embed import Anime, EmbedRequest, Episode, db
 from app.services.cache_maintenance import delete_expired_embed_cache
-from app.utils.helpers import clean_name, extract_audio_type
+from app.utils.helpers import clean_name, extract_audio_type, format_info
 from app.api.utils import _utcnow
 
 logger = logging.getLogger(__name__)
@@ -150,7 +150,7 @@ def save_animes_to_db(anime_list):
                 "url": url,
                 "cover_url": cover_url,
                 "audio_type": item.get("audio_type") or extract_audio_type(item.get("name") or ""),
-                "latest_episode_info": item.get("info") or item.get("latest_episode_info"),
+                "latest_episode_info": format_info(item.get("info") or item.get("latest_episode_info")),
                 "last_scanned": now,
             }
 
@@ -231,7 +231,7 @@ def _get_or_create_anime(anime_url, anime_title=None, item_type="series", latest
         anime.item_type = item_type
     
     if latest_episode_info:
-        anime.latest_episode_info = latest_episode_info
+        anime.latest_episode_info = format_info(latest_episode_info)
 
     return anime
 
@@ -245,7 +245,7 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
             title = clean_name(item.get("title"))
             url = item.get("episode_url") or item.get("url")
             embed_url = item.get("embed_url")
-            info = item.get("info")
+            info = format_info(item.get("info"))
 
             if not url:
                 continue

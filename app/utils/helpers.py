@@ -13,6 +13,14 @@ def extract_audio_type(name):
     
     return "Legendado"
 
+def format_info(info):
+    """
+    Formata a string de informação (ex: "EPISÓDIO 849" -> "Episódio 849").
+    """
+    if not info:
+        return info
+    return info.strip().capitalize()
+
 def clean_name(name):
 
     """
