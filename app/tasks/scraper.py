@@ -14,7 +14,8 @@ def run_scraper_task(target_url, config):
                 context = scraper._get_context()
                 page = context.new_page()
                 
-                url_patterns = config.get("url_patterns", {})
+                # Acesso aos atributos de SiteConfig (instância Pydantic)
+                url_patterns = getattr(config, 'url_patterns', {})
                 
                 # Caso 1: Home
                 if scraper.match_pattern(target_url, url_patterns.get("home", "")):

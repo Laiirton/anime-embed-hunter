@@ -36,7 +36,8 @@ class SiteManager:
             return None, None
 
         for site_key, cfg in self.configs.items():
-            domain = (cfg.get('domain') or "").lower()
+            # Agora cfg é uma instância de SiteConfig (Pydantic), não um dict
+            domain = (getattr(cfg, 'domain', '') or "").lower()
             if domain and (hostname == domain or hostname.endswith(f".{domain}")):
                 return site_key, cfg
         return None, None
