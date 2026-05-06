@@ -144,10 +144,20 @@ class ScraperService:
                                 if (container) {
                                     const links = Array.from(container.querySelectorAll('a')).map(a => {
                                         const infoElem = a.querySelector(infoSelector);
+                                        const infoText = infoElem ? infoElem.innerText.trim() : null;
+                                        
+                                        let title = a.getAttribute('title');
+                                        if (!title) {
+                                            const temp = a.cloneNode(true);
+                                            const infoInTemp = temp.querySelector(infoSelector);
+                                            if (infoInTemp) infoInTemp.remove();
+                                            title = temp.innerText.trim();
+                                        }
+
                                         return {
-                                            title: a.getAttribute('title') || a.innerText.trim(),
+                                            title: title,
                                             url: a.href,
-                                            info: infoElem ? infoElem.innerText.trim() : null
+                                            info: infoText
                                         };
                                     });
                                     results[key] = links;
