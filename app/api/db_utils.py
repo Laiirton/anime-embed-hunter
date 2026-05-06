@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.embed import Anime, EmbedRequest, Episode, db
 from app.services.cache_maintenance import delete_expired_embed_cache
-from app.utils.helpers import clean_name
+from app.utils.helpers import clean_name, extract_audio_type
 from app.api.utils import _utcnow
 
 logger = logging.getLogger(__name__)
@@ -149,6 +149,7 @@ def save_animes_to_db(anime_list):
                 "name": name,
                 "url": url,
                 "cover_url": cover_url,
+                "audio_type": item.get("audio_type") or extract_audio_type(item.get("name") or ""),
                 "latest_episode_info": item.get("info") or item.get("latest_episode_info"),
                 "last_scanned": now,
             }
@@ -165,6 +166,7 @@ def save_animes_to_db(anime_list):
                 set_={
                     "name": stmt.excluded.name,
                     "cover_url": db.func.coalesce(stmt.excluded.cover_url, Anime.cover_url),
+                    "audio_type": stmt.excluded.audio_type,
                     "latest_episode_info": stmt.excluded.latest_episode_info,
                     "last_scanned": stmt.excluded.last_scanned,
                 },
@@ -183,6 +185,8 @@ def save_animes_to_db(anime_list):
                     anime.last_scanned = row["last_scanned"]
                     if row["cover_url"]:
                         anime.cover_url = row["cover_url"]
+                    if row.get("audio_type"):
+                        anime.audio_type = row["audio_type"]
                     if row["latest_episode_info"]:
                         anime.latest_episode_info = row["latest_episode_info"]
                 else:
@@ -191,6 +195,7 @@ def save_animes_to_db(anime_list):
                             name=row["name"],
                             url=row["url"],
                             cover_url=row["cover_url"],
+                            audio_type=row.get("audio_type", "Legendado"),
                             latest_episode_info=row["latest_episode_info"],
                             last_scanned=row["last_scanned"],
                         )
@@ -252,6 +257,10 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
                     ep.embed_url = embed_url
                 if info:
                     ep.info = info
+                if item.get("audio_type"):
+                    ep.audio_type = item["audio_type"]
+                elif not ep.audio_type:
+                    ep.audio_type = extract_audio_type(item.get("title") or "")
                 ep.last_updated = _utcnow()
                 if anime and ep.anime_id != anime.id:
                     ep.anime_id = anime.id
@@ -261,6 +270,7 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
                     url=url,
                     embed_url=embed_url,
                     info=info,
+                    audio_type=item.get("audio_type") or extract_audio_type(item.get("title") or ""),
                     anime_id=anime.id if anime else None,
                     last_updated=_utcnow(),
                 )

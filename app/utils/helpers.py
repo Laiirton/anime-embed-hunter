@@ -1,6 +1,20 @@
 import re
 
+def extract_audio_type(name):
+    """
+    Extrai o tipo de áudio (Dublado ou Legendado) do nome.
+    """
+    if not name:
+        return "Legendado"
+    
+    name_lower = name.lower()
+    if "dublado" in name_lower or " dub" in name_lower:
+        return "Dublado"
+    
+    return "Legendado"
+
 def clean_name(name):
+
     """
     Limpa nomes de animes e episódios removendo termos desnecessários.
     """

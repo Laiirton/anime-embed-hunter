@@ -19,6 +19,7 @@ class Episode(db.Model):
     url = db.Column(db.String(500), unique=True, nullable=False, index=True)
     embed_url = db.Column(db.Text)
     info = db.Column(db.String(100), nullable=True)
+    audio_type = db.Column(db.String(50), default='Legendado')
     last_updated = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
     anime = db.relationship('Anime', backref=db.backref('episodes', lazy='selectin'))
@@ -32,6 +33,7 @@ class Episode(db.Model):
             'url': self.url,
             'embed_url': self.embed_url,
             'info': self.info,
+            'audio_type': self.audio_type,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None
         }
 
@@ -43,6 +45,7 @@ class Anime(db.Model):
     url = db.Column(db.String(500), unique=True, nullable=False, index=True)
     item_type = db.Column(db.String(50), default='series') # series, movie
     cover_url = db.Column(db.String(500), nullable=True)
+    audio_type = db.Column(db.String(50), default='Legendado')
     latest_episode_info = db.Column(db.String(100), nullable=True)
     last_scanned = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
@@ -56,6 +59,7 @@ class Anime(db.Model):
             'url': self.url,
             'item_type': self.item_type,
             'cover_url': self.cover_url,
+            'audio_type': self.audio_type,
             'latest_episode_info': self.latest_episode_info,
             'last_scanned': self.last_scanned.isoformat() if self.last_scanned else None,
             'episodes_count': len(self.episodes) if hasattr(self, 'episodes') else 0

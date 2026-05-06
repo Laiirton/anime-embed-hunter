@@ -8,7 +8,7 @@ from app import cache, limiter
 from app.models.embed import EmbedRequest
 from app.services.scraper import ScraperService
 from app.services.site_manager import site_manager
-from app.utils.helpers import clean_name
+from app.utils.helpers import clean_name, extract_audio_type
 from app.api.routes import bp
 from app.api.utils import (
     _build_home_featured_cache_key,
@@ -35,11 +35,13 @@ def _process_featured_items(items, scraper, url_patterns):
         elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
         elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
         
-        title = clean_name(item.get("title"))
+        title_raw = item.get("title", "")
+        audio_type = extract_audio_type(title_raw)
+        title = clean_name(title_raw)
         info = item.get("info")
         
-        # Deduplicate by Title + Info to avoid Dubbed/Subbed duplicates on home
-        item_key = (title, info)
+        # Deduplicate by Title + Info + Audio to avoid Dubbed/Subbed duplicates on home
+        item_key = (title, info, audio_type)
         if item_key in seen_items:
             continue
             
@@ -51,7 +53,8 @@ def _process_featured_items(items, scraper, url_patterns):
             "url": item_url,
             "cover_url": item.get("cover_url"),
             "item_type": item_type,
-            "info": info
+            "info": info,
+            "audio_type": audio_type
         })
     return processed
 
