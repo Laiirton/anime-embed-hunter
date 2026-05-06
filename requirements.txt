@@ -13,3 +13,7 @@ psycopg[binary]>=3.2.10
 requests==2.32.3
 Flask-CORS==5.0.0
 gunicorn==23.0.0
+redis>=5.2.1
+rq>=2.1.0
+pydantic>=2.10.0
+python-json-logger==2.0.7

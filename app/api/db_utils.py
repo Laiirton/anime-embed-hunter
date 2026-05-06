@@ -72,6 +72,16 @@ def _load_embed_cache(url):
     except json.JSONDecodeError:
         logger.warning("Invalid cached JSON for URL: %s", url)
         return None
+def get_embed_with_swr(url, ttl_hours=24):
+    entry = EmbedRequest.query.filter_by(url=url).first()
+    if not entry:
+        return None, "miss"
+    
+    # Verifica se expirou
+    if entry.expires_at < _utcnow():
+        return entry.data, "stale" # Dados obsoletos, disparar background task
+        
+    return entry.data, "fresh" # Dados frescos
 
 def _save_to_embed_cache(url, data):
     ttl_hours = max(1, int(current_app.config.get("EMBED_CACHE_TTL_HOURS", 24)))

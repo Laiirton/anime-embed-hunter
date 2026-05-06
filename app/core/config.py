@@ -28,6 +28,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _DATABASE_URL or f"sqlite:///{_SQLITE_PATH}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
     _DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "1800"))
     _DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "2"))
     _DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "2"))

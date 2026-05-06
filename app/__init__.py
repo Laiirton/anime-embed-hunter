@@ -9,6 +9,23 @@ from app.models.embed import db
 import os
 
 cache = Cache()
+import logging
+from pythonjsonlogger import jsonlogger
+
+def setup_logging():
+    logger = logging.getLogger()
+    logHandler = logging.StreamHandler()
+    formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
+    logger.setLevel(logging.INFO)
+
+# Chamar setup_logging() em create_app
+from redis import Redis
+from rq import Queue
+
+redis_conn = Redis.from_url(Config.REDIS_URL)
+scraper_queue = Queue("scraper-queue", connection=redis_conn)
 migrate = Migrate()
 
 
@@ -31,6 +48,7 @@ def _validate_required_config(app):
 
 
 def create_app(config_class=Config):
+    setup_logging()
     app = Flask(__name__)
     app.config.from_object(config_class)
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = config_class.build_engine_options(

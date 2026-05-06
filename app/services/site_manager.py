@@ -1,6 +1,8 @@
 import json
 import os
 import logging
+from app.core.config_model import AppConfig
+
 from urllib.parse import urlparse
 
 class SiteManager:
@@ -14,8 +16,11 @@ class SiteManager:
         try:
             if os.path.exists(self.config_path):
                 with open(self.config_path, 'r', encoding='utf-8') as f:
-                    self.configs = json.load(f)
-                logging.info(f"Configurations loaded from {self.config_path}")
+                    raw_configs = json.load(f)
+                    # Validação Pydantic
+                    validated_configs = AppConfig(sites=raw_configs)
+                    self.configs = validated_configs.sites
+                logging.info(f"Configurations loaded and validated from {self.config_path}")
                 return True
             else:
                 logging.error(f"Config file not found: {self.config_path}")

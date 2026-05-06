@@ -47,16 +47,38 @@ def get_embed():
     _cleanup_expired_embed_cache_if_needed()
 
     if not force_refresh:
-        cached_payload = _load_embed_cache(target_url)
-        if cached_payload:
+    if not force_refresh:
+        cached_payload, status = get_embed_with_swr(target_url)
+        if status == "fresh":
             cached_payload["cached"] = True
             cached_payload["cache_source"] = "embed_requests"
+            return jsonify(cached_payload), 200
+        elif status == "stale":
+            # Enfileira tarefa para atualizar em background
+            from app import scraper_queue
+            from app.tasks.scraper import run_scraper_task
+            scraper_queue.enqueue(run_scraper_task, target_url, config)
+            
+            # Retorna o dado obsoleto para o usuário
+            cached_payload["cached"] = True
+            cached_payload["cache_source"] = "embed_requests (stale)"
             return jsonify(cached_payload), 200
 
     url_patterns = config.get("url_patterns", {})
 
     try:
         with ScraperService() as scraper:
+    # Enfileirar tarefa de scraping
+    from app import scraper_queue
+    from app.tasks.scraper import run_scraper_task
+    scraper_queue.enqueue(run_scraper_task, target_url, config)
+    return jsonify({"message": "Scraping task enqueued"}), 202
+
+    # Removendo lógica síncrona temporariamente (a ser substituída pelo worker)
+    '''
+    with ScraperService() as scraper:
+        # ...
+    '''
             context = scraper._get_context()
             page = context.new_page()
 
