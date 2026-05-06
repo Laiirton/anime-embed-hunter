@@ -46,6 +46,12 @@ class Anime(db.Model):
     item_type = db.Column(db.String(50), default='series') # series, movie
     cover_url = db.Column(db.String(500), nullable=True)
     audio_type = db.Column(db.String(50), default='Legendado')
+    status = db.Column(db.String(50), nullable=True) # Ongoing, Finished
+    total_episodes = db.Column(db.Integer, nullable=True)
+    synopsis = db.Column(db.Text, nullable=True)
+    rating = db.Column(db.String(20), nullable=True)
+    year = db.Column(db.Integer, nullable=True)
+    genres = db.Column(db.String(255), nullable=True)
     latest_episode_info = db.Column(db.String(100), nullable=True)
     last_scanned = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
@@ -60,6 +66,12 @@ class Anime(db.Model):
             'item_type': self.item_type,
             'cover_url': self.cover_url,
             'audio_type': self.audio_type,
+            'status': self.status,
+            'total_episodes': self.total_episodes,
+            'synopsis': self.synopsis,
+            'rating': self.rating,
+            'year': self.year,
+            'genres': self.genres,
             'latest_episode_info': self.latest_episode_info,
             'last_scanned': self.last_scanned.isoformat() if self.last_scanned else None,
             'episodes_count': len(self.episodes) if hasattr(self, 'episodes') else 0

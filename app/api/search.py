@@ -37,8 +37,8 @@ def search_animes():
             .all()
         )
         
-        from app.services.cover_service import populate_covers
-        populate_covers(results)
+        from app.services.metadata_service import populate_anime_metadata
+        populate_anime_metadata(results)
         
         payload = {
             "query": query,

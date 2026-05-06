@@ -48,8 +48,8 @@ def get_catalog():
             .all()
         )
         
-        from app.services.cover_service import populate_covers
-        populate_covers(items)
+        from app.services.metadata_service import populate_anime_metadata
+        populate_anime_metadata(items)
 
         return jsonify(
             {
@@ -97,8 +97,8 @@ def catalog_search():
             .all()
         )
 
-        from app.services.cover_service import populate_covers
-        populate_covers(items)
+        from app.services.metadata_service import populate_anime_metadata
+        populate_anime_metadata(items)
 
         return jsonify(
             {

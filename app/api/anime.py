@@ -26,8 +26,8 @@ def get_anime(slug):
     if not anime:
         return jsonify({"error": "Anime not found"}), 404
 
-    from app.services.cover_service import populate_cover
-    populate_cover(anime)
+    from app.services.metadata_service import populate_anime_metadata_single
+    populate_anime_metadata_single(anime)
 
     default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
     max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))

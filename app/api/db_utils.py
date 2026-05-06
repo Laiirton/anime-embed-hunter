@@ -150,6 +150,12 @@ def save_animes_to_db(anime_list):
                 "url": url,
                 "cover_url": cover_url,
                 "audio_type": item.get("audio_type") or extract_audio_type(item.get("name") or ""),
+                "status": item.get("status"),
+                "total_episodes": item.get("total_episodes"),
+                "synopsis": item.get("synopsis"),
+                "rating": item.get("rating"),
+                "year": item.get("year"),
+                "genres": item.get("genres"),
                 "latest_episode_info": format_info(item.get("info") or item.get("latest_episode_info")),
                 "last_scanned": now,
             }
@@ -167,6 +173,12 @@ def save_animes_to_db(anime_list):
                     "name": stmt.excluded.name,
                     "cover_url": db.func.coalesce(stmt.excluded.cover_url, Anime.cover_url),
                     "audio_type": stmt.excluded.audio_type,
+                    "status": db.func.coalesce(stmt.excluded.status, Anime.status),
+                    "total_episodes": db.func.coalesce(stmt.excluded.total_episodes, Anime.total_episodes),
+                    "synopsis": db.func.coalesce(stmt.excluded.synopsis, Anime.synopsis),
+                    "rating": db.func.coalesce(stmt.excluded.rating, Anime.rating),
+                    "year": db.func.coalesce(stmt.excluded.year, Anime.year),
+                    "genres": db.func.coalesce(stmt.excluded.genres, Anime.genres),
                     "latest_episode_info": stmt.excluded.latest_episode_info,
                     "last_scanned": stmt.excluded.last_scanned,
                 },
@@ -181,12 +193,14 @@ def save_animes_to_db(anime_list):
             for row in rows:
                 anime = existing.get(row["url"])
                 if anime:
-                    anime.name = row["name"]
-                    anime.last_scanned = row["last_scanned"]
-                    if row["cover_url"]:
-                        anime.cover_url = row["cover_url"]
                     if row.get("audio_type"):
                         anime.audio_type = row["audio_type"]
+                    if row.get("status"): anime.status = row["status"]
+                    if row.get("total_episodes"): anime.total_episodes = row["total_episodes"]
+                    if row.get("synopsis"): anime.synopsis = row["synopsis"]
+                    if row.get("rating"): anime.rating = row["rating"]
+                    if row.get("year"): anime.year = row["year"]
+                    if row.get("genres"): anime.genres = row["genres"]
                     if row["latest_episode_info"]:
                         anime.latest_episode_info = row["latest_episode_info"]
                 else:
@@ -196,6 +210,12 @@ def save_animes_to_db(anime_list):
                             url=row["url"],
                             cover_url=row["cover_url"],
                             audio_type=row.get("audio_type", "Legendado"),
+                            status=row.get("status"),
+                            total_episodes=row.get("total_episodes"),
+                            synopsis=row.get("synopsis"),
+                            rating=row.get("rating"),
+                            year=row.get("year"),
+                            genres=row.get("genres"),
                             latest_episode_info=row["latest_episode_info"],
                             last_scanned=row["last_scanned"],
                         )

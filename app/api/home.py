@@ -124,8 +124,8 @@ def _scrape_home_featured(force_refresh=False):
                                         sections_data["featured"] = processed
                                         all_items_to_populate.extend(processed)
 
-                                    from app.services.cover_service import populate_covers_for_dicts
-                                    populate_covers_for_dicts(all_items_to_populate)
+                                    from app.services.metadata_service import populate_metadata_for_dicts
+                                    populate_metadata_for_dicts(all_items_to_populate)
 
                                     # Save to DB
                                     from app.api.db_utils import save_animes_to_db, save_episodes_to_db
@@ -200,8 +200,8 @@ def _scrape_home_featured(force_refresh=False):
                     sections_data["featured"] = processed
                     all_items_to_populate.extend(processed)
 
-                from app.services.cover_service import populate_covers_for_dicts
-                populate_covers_for_dicts(all_items_to_populate)
+                from app.services.metadata_service import populate_metadata_for_dicts
+                populate_metadata_for_dicts(all_items_to_populate)
 
                 # Save to DB
                 from app.api.db_utils import save_animes_to_db, save_episodes_to_db
