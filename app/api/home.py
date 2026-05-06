@@ -20,6 +20,23 @@ from app.api.db_utils import _save_to_embed_cache
 
 logger = logging.getLogger(__name__)
 
+def _process_featured_items(items, scraper, url_patterns):
+    processed = []
+    for item in items:
+        item_url = item.get("url")
+        if not item_url: continue
+        item_type = "unknown"
+        if scraper.match_pattern(item_url, url_patterns.get('episode', "")): item_type = "episode"
+        elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
+        elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
+        processed.append({
+            "title": clean_name(item.get("title")),
+            "url": item_url,
+            "cover_url": item.get("cover_url"),
+            "item_type": item_type
+        })
+    return processed
+
 def _scrape_home_featured(force_refresh=False):
     cache_key = _build_home_featured_cache_key()
     persistent_key = f"persistent:{cache_key}"
@@ -27,7 +44,14 @@ def _scrape_home_featured(force_refresh=False):
     if not force_refresh:
         cached_payload = cache.get(cache_key)
         if cached_payload:
-            has_unknown = any(item.get("item_type") == "unknown" for item in cached_payload.get("results", []))
+            # Check for unknown types in any section
+            all_cached_items = []
+            if "sections" in cached_payload:
+                for s in cached_payload["sections"].values(): all_cached_items.extend(s)
+            elif "results" in cached_payload:
+                all_cached_items = cached_payload["results"]
+            
+            has_unknown = any(item.get("item_type") == "unknown" for item in all_cached_items)
             if not has_unknown:
                 return {**cached_payload, "cached": True, "cache_source": "ram"}, 200
 
@@ -39,7 +63,14 @@ def _scrape_home_featured(force_refresh=False):
             db_data = json.loads(db_entry.response_data)
             ttl_seconds = current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800)
             is_stale = (now - db_entry.timestamp).total_seconds() > ttl_seconds
-            has_unknown = any(item.get("item_type") == "unknown" for item in db_data.get("results", []))
+            
+            all_cached_items = []
+            if "sections" in db_data:
+                for s in db_data["sections"].values(): all_cached_items.extend(s)
+            elif "results" in db_data:
+                all_cached_items = db_data["results"]
+
+            has_unknown = any(item.get("item_type") == "unknown" for item in all_cached_items)
             if has_unknown:
                 raise ValueError("Cache has unknown items, force synchronous refresh")
 
@@ -54,24 +85,34 @@ def _scrape_home_featured(force_refresh=False):
                             context = scraper._get_context()
                             page = context.new_page()
                             try:
-                                result = scraper.extract_episodes(page, url, config, selector_key="home")
+                                result = scraper.extract_home_sections(page, url, config)
                                 if "error" not in result:
-                                    featured = []
-                                    # Acesso ao atributo Pydantic 'url_patterns', que é um dict
                                     url_patterns = getattr(config, 'url_patterns', {})
-                                    for item in result.get("episode_urls", []):
-                                        item_url = item.get("url")
-                                        if not item_url: continue
-                                        item_type = "unknown"
-                                        if scraper.match_pattern(item_url, url_patterns.get('episode', "")): item_type = "episode"
-                                        elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
-                                        elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
-                                        featured.append({"title": clean_name(item.get("title")), "url": item_url, "cover_url": item.get("cover_url"), "item_type": item_type})
+                                    sections_data = {}
+                                    all_items_to_populate = []
                                     
-                                    from app.services.cover_service import populate_covers_for_dicts
-                                    populate_covers_for_dicts(featured)
+                                    if "sections" in result:
+                                        for section_name, items in result["sections"].items():
+                                            processed = _process_featured_items(items, scraper, url_patterns)
+                                            sections_data[section_name] = processed
+                                            all_items_to_populate.extend(processed)
+                                    else:
+                                        # Fallback to old format if extract_home_sections returned flat list
+                                        items = result.get("episode_urls", [])
+                                        processed = _process_featured_items(items, scraper, url_patterns)
+                                        sections_data["featured"] = processed
+                                        all_items_to_populate.extend(processed)
 
-                                    new_payload = {"source": site_key, "url": url, "total_items": len(featured), "results": featured, "cached": False}
+                                    from app.services.cover_service import populate_covers_for_dicts
+                                    populate_covers_for_dicts(all_items_to_populate)
+
+                                    new_payload = {
+                                        "source": site_key, 
+                                        "url": url, 
+                                        "sections": sections_data,
+                                        "total_items": len(all_items_to_populate),
+                                        "cached": False
+                                    }
                                     cache.set(cache_key, new_payload, timeout=ttl_seconds)
                                     _save_to_embed_cache(persistent_key, new_payload)
                             finally:
@@ -98,25 +139,35 @@ def _scrape_home_featured(force_refresh=False):
             context = scraper._get_context()
             page = context.new_page()
             try:
-                result = scraper.extract_episodes(page, home_url, config, selector_key="home")
+                result = scraper.extract_home_sections(page, home_url, config)
                 if "error" in result:
                     return {"error": result["error"]}, 502
 
-                featured = []
                 url_patterns = getattr(config, 'url_patterns', {})
-                for item in result.get("episode_urls", []):
-                    item_url = item.get("url")
-                    if not item_url: continue
-                    item_type = "unknown"
-                    if scraper.match_pattern(item_url, url_patterns.get('episode', "")): item_type = "episode"
-                    elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
-                    elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
-                    featured.append({"title": clean_name(item.get("title")), "url": item_url, "cover_url": item.get("cover_url"), "item_type": item_type})
+                sections_data = {}
+                all_items_to_populate = []
+                
+                if "sections" in result:
+                    for section_name, items in result["sections"].items():
+                        processed = _process_featured_items(items, scraper, url_patterns)
+                        sections_data[section_name] = processed
+                        all_items_to_populate.extend(processed)
+                else:
+                    items = result.get("episode_urls", [])
+                    processed = _process_featured_items(items, scraper, url_patterns)
+                    sections_data["featured"] = processed
+                    all_items_to_populate.extend(processed)
 
                 from app.services.cover_service import populate_covers_for_dicts
-                populate_covers_for_dicts(featured)
+                populate_covers_for_dicts(all_items_to_populate)
 
-                payload = {"source": site_key, "url": home_url, "total_items": len(featured), "results": featured, "cached": False}
+                payload = {
+                    "source": site_key, 
+                    "url": home_url, 
+                    "sections": sections_data,
+                    "total_items": len(all_items_to_populate),
+                    "cached": False
+                }
                 
                 cache.set(cache_key, payload, timeout=current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800))
                 _save_to_embed_cache(persistent_key, payload)

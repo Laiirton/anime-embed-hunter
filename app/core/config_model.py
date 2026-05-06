@@ -9,6 +9,7 @@ class Selectors(BaseModel):
     item_selector: Optional[str] = None
     pagination_info: Optional[str] = None
     url_pattern: Optional[str] = None
+    home_sections: Optional[Dict[str, str]] = None
 
 class SiteConfig(BaseModel):
     domain: str

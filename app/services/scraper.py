@@ -115,6 +115,57 @@ class ScraperService:
             self.capture_screenshot(page, "error_episodes")
             return {'error': str(e)}
 
+    def extract_home_sections(self, page: Page, url: str, config: Any) -> Dict[str, Any]:
+        if isinstance(config, BaseModel):
+            config = config.model_dump()
+        
+        home_sections_config = config.get("selectors", {}).get("home", {}).get("home_sections", {})
+        if not home_sections_config:
+            # Fallback to default extraction if no sections defined
+            return self.extract_episodes(page, url, config, selector_key="home")
+
+        try:
+            page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+            # Wait for some common element
+            page.wait_for_selector("div.header_title", timeout=30000)
+
+            # Use JS to extract sections based on text content
+            data = page.evaluate("""
+                (sectionsConfig) => {
+                    const results = {};
+                    const headers = document.querySelectorAll('div.header_title');
+                    headers.forEach(header => {
+                        const title = header.innerText.trim().toUpperCase();
+                        
+                        for (const [key, searchTitle] of Object.entries(sectionsConfig)) {
+                            if (title.includes(searchTitle.toUpperCase())) {
+                                const container = header.nextElementSibling;
+                                if (container) {
+                                    const links = Array.from(container.querySelectorAll('a')).map(a => ({
+                                        title: a.getAttribute('title') || a.innerText.trim(),
+                                        url: a.href,
+                                        // We'll populate cover_url and item_type in the API layer
+                                    }));
+                                    results[key] = links;
+                                }
+                                break;
+                            }
+                        }
+                    });
+                    return results;
+                }
+            """, home_sections_config)
+
+            return {
+                "url": url,
+                "sections": data
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error extracting home sections from {url}: {e}")
+            self.capture_screenshot(page, "error_home_sections")
+            return {'error': str(e)}
+
     def capture_screenshot(self, page: Page, name: str):
         try:
             os.makedirs('screenshots', exist_ok=True)

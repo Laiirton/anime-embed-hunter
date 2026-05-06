@@ -9,7 +9,13 @@
     },
     "selectors": {
       "home": {
-        "episodes_section": ".itemE a, .itemA a"
+        "episodes_section": ".itemE a, .itemA a",
+        "home_sections": {
+          "releases": "LANÇAMENTOS",
+          "episodes": "ÚLTIMOS EPISÓDIOS",
+          "animes": "ÚLTIMOS ANIMES",
+          "movies": "ÚLTIMOS FILMES"
+        }
       },
       "anime_main": {
         "title": "h1",
