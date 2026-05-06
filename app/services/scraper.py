@@ -146,12 +146,20 @@ class ScraperService:
                                         const infoElem = a.querySelector(infoSelector);
                                         const infoText = infoElem ? infoElem.innerText.trim() : null;
                                         
-                                        let title = a.getAttribute('title');
+                                        // Preferred method: innerText without the info element
+                                        const temp = a.cloneNode(true);
+                                        const infoInTemp = temp.querySelector(infoSelector);
+                                        if (infoInTemp) infoInTemp.remove();
+                                        let title = temp.innerText.trim();
+                                        
+                                        // Fallback to title attribute if innerText is empty
                                         if (!title) {
-                                            const temp = a.cloneNode(true);
-                                            const infoInTemp = temp.querySelector(infoSelector);
-                                            if (infoInTemp) infoInTemp.remove();
-                                            title = temp.innerText.trim();
+                                            title = a.getAttribute('title') || "";
+                                        }
+
+                                        // Cleanup if title still contains infoText (common in title attributes)
+                                        if (infoText && title.includes(infoText)) {
+                                            title = title.replace(infoText, "").trim();
                                         }
 
                                         return {

@@ -22,19 +22,36 @@ logger = logging.getLogger(__name__)
 
 def _process_featured_items(items, scraper, url_patterns):
     processed = []
+    seen_urls = set()
+    seen_items = set() # (title, info)
+    
     for item in items:
         item_url = item.get("url")
-        if not item_url: continue
+        if not item_url or item_url in seen_urls: 
+            continue
+            
         item_type = "unknown"
         if scraper.match_pattern(item_url, url_patterns.get('episode', "")): item_type = "episode"
         elif scraper.match_pattern(item_url, url_patterns.get('anime_main', "")): item_type = "anime"
         elif scraper.match_pattern(item_url, url_patterns.get('movie', "")): item_type = "movie"
+        
+        title = clean_name(item.get("title"))
+        info = item.get("info")
+        
+        # Deduplicate by Title + Info to avoid Dubbed/Subbed duplicates on home
+        item_key = (title, info)
+        if item_key in seen_items:
+            continue
+            
+        seen_urls.add(item_url)
+        seen_items.add(item_key)
+        
         processed.append({
-            "title": clean_name(item.get("title")),
+            "title": title,
             "url": item_url,
             "cover_url": item.get("cover_url"),
             "item_type": item_type,
-            "info": item.get("info")
+            "info": info
         })
     return processed
 
@@ -117,10 +134,21 @@ def _scrape_home_featured(force_refresh=False):
                                     if episodes_to_save:
                                         save_episodes_to_db(episodes_to_save)
 
+                                    # Organize sections in the requested order
+                                    ordered_sections = {}
+                                    for key in ["releases", "latest_episodes", "latest_animes", "latest_movies"]:
+                                        if key in sections_data:
+                                            ordered_sections[key] = sections_data[key]
+                                    
+                                    # Add any other sections that might exist
+                                    for key, value in sections_data.items():
+                                        if key not in ordered_sections:
+                                            ordered_sections[key] = value
+
                                     new_payload = {
                                         "source": site_key, 
                                         "url": url, 
-                                        "sections": sections_data,
+                                        "sections": ordered_sections,
                                         "total_items": len(all_items_to_populate),
                                         "cached": False
                                     }
@@ -182,10 +210,21 @@ def _scrape_home_featured(force_refresh=False):
                 if episodes_to_save:
                     save_episodes_to_db(episodes_to_save)
 
+                # Organize sections in the requested order
+                ordered_sections = {}
+                for key in ["releases", "latest_episodes", "latest_animes", "latest_movies"]:
+                    if key in sections_data:
+                        ordered_sections[key] = sections_data[key]
+                
+                # Add any other sections that might exist
+                for key, value in sections_data.items():
+                    if key not in ordered_sections:
+                        ordered_sections[key] = value
+
                 payload = {
                     "source": site_key, 
                     "url": home_url, 
-                    "sections": sections_data,
+                    "sections": ordered_sections,
                     "total_items": len(all_items_to_populate),
                     "cached": False
                 }

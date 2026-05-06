@@ -9,17 +9,35 @@ def clean_name(name):
     
     # Remove prefix "Assistir "
     name = re.sub(r'^Assistir\s+', '', name, flags=re.IGNORECASE)
+
+    # Limpa quebras de linha e múltiplos espaços
+    name = name.replace('\n', ' ')
+    name = re.sub(r'\s+', ' ', name)
     
-    # Remove sufixos comuns
+    # Remove "HD" isolado no início ou fim
+    name = re.sub(r'^\s*HD\s+', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+HD\s*$', '', name, flags=re.IGNORECASE)
+    
+    # Remove padrões de episódio (ex: "Episódio 05", "Ep 05", "Ep. 05")
+    name = re.sub(r'\s+(?:Episódio|Ep\.?)\s+\d+\b.*$', '', name, flags=re.IGNORECASE)
+
+    # Remove sufixos comuns e variações de áudio
     suffixes = [
         r'\s+Online\s+em\s+HD$',
         r'\s+Online\s+FHD$',
         r'\s+Todos\s+Episódios.*$',
         r'\s+Online$',
         r'\s+Dublado\s+Online.*$',
-        r'\s+Legendado\s+Online.*$'
+        r'\s+Legendado\s+Online.*$',
+        r'\s+Dublado$',
+        r'\s+Legendado$',
+        r'\s+Dub$',
+        r'\s+Sub$'
     ]
     for suffix in suffixes:
         name = re.sub(suffix, '', name, flags=re.IGNORECASE)
+    
+    # Remove caracteres residuais de separação (como " - " no final)
+    name = re.sub(r'\s+-\s*$', '', name)
     
     return name.strip()

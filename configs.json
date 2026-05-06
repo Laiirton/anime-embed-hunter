@@ -13,9 +13,9 @@
         "item_info_selector": ".number",
         "home_sections": {
           "releases": "LANÇAMENTOS",
-          "episodes": "ÚLTIMOS EPISÓDIOS",
-          "animes": "ÚLTIMOS ANIMES",
-          "movies": "ÚLTIMOS FILMES"
+          "latest_episodes": "ÚLTIMOS EPISÓDIOS",
+          "latest_animes": "ÚLTIMOS ANIMES",
+          "latest_movies": "ÚLTIMOS FILMES"
         }
       },
       "anime_main": {
