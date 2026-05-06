@@ -27,7 +27,9 @@ def _scrape_home_featured(force_refresh=False):
     if not force_refresh:
         cached_payload = cache.get(cache_key)
         if cached_payload:
-            return {**cached_payload, "cached": True, "cache_source": "ram"}, 200
+            has_unknown = any(item.get("item_type") == "unknown" for item in cached_payload.get("results", []))
+            if not has_unknown:
+                return {**cached_payload, "cached": True, "cache_source": "ram"}, 200
 
     db_entry = EmbedRequest.query.filter_by(url=persistent_key).first()
     now = _utcnow()
@@ -37,7 +39,10 @@ def _scrape_home_featured(force_refresh=False):
             db_data = json.loads(db_entry.response_data)
             ttl_seconds = current_app.config.get("HOME_FEATURED_CACHE_TTL_SECONDS", 1800)
             is_stale = (now - db_entry.timestamp).total_seconds() > ttl_seconds
-            
+            has_unknown = any(item.get("item_type") == "unknown" for item in db_data.get("results", []))
+            if has_unknown:
+                raise ValueError("Cache has unknown items, force synchronous refresh")
+
             if not is_stale:
                 cache.set(cache_key, db_data, timeout=ttl_seconds)
                 return {**db_data, "cached": True, "cache_source": "db"}, 200

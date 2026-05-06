@@ -84,8 +84,8 @@ def test_force_true_bypasses_embed_cache(client, app, auth_headers, monkeypatch)
         )
         db.session.commit()
 
-    monkeypatch.setattr(routes.site_manager, "get_config_for_url", lambda _: ("animesdigital", _mock_site_config()))
-    monkeypatch.setattr(routes, "ScraperService", _FailIfCalledScraper)
+    monkeypatch.setattr("app.api.embed.site_manager.get_config_for_url", lambda *args, **kwargs: ("animesdigital", _mock_site_config()))
+    monkeypatch.setattr("app.tasks.scraper.ScraperService", _FailIfCalledScraper)
 
     response = client.get("/get-embed", query_string={"url": target_url}, headers=auth_headers)
     assert response.status_code == 200
@@ -94,7 +94,7 @@ def test_force_true_bypasses_embed_cache(client, app, auth_headers, monkeypatch)
     assert payload["cached"] is True
     assert payload["cache_source"] == "embed_requests"
 
-    monkeypatch.setattr(routes, "ScraperService", _MockScraper)
+    monkeypatch.setattr("app.tasks.scraper.ScraperService", _MockScraper)
     response = client.get(
         "/get-embed",
         query_string={"url": target_url, "force": "true"},
@@ -111,8 +111,8 @@ def test_anime_main_creates_anime_and_links_episodes(client, app, auth_headers, 
 
     target_url = "https://animesdigital.org/anime/a/brand-new-anime"
 
-    monkeypatch.setattr(routes.site_manager, "get_config_for_url", lambda _: ("animesdigital", _mock_site_config()))
-    monkeypatch.setattr(routes, "ScraperService", _MockScraper)
+    monkeypatch.setattr("app.api.embed.site_manager.get_config_for_url", lambda *args, **kwargs: ("animesdigital", _mock_site_config()))
+    monkeypatch.setattr("app.tasks.scraper.ScraperService", _MockScraper)
 
     response = client.get(
         "/get-embed",
@@ -357,8 +357,8 @@ def test_home_featured_uses_scraper_and_caches(client, auth_headers, monkeypatch
         def match_pattern(self, url, pattern):
             return pattern in url
 
-    monkeypatch.setattr(routes.site_manager, "get_config_for_url", lambda _: ("animesdigital", _mock_site_config()))
-    monkeypatch.setattr(routes, "ScraperService", _FeaturedScraper)
+    monkeypatch.setattr("app.api.home.site_manager.get_config_for_url", lambda *args, **kwargs: ("animesdigital", _mock_site_config()))
+    monkeypatch.setattr("app.api.home.ScraperService", _FeaturedScraper)
 
     response = client.get("/home/featured", headers=auth_headers)
     assert response.status_code == 200
@@ -411,8 +411,8 @@ def test_episode_players_endpoint(client, app, auth_headers, monkeypatch):
                 "total_players": 2,
             }
 
-    monkeypatch.setattr(routes.site_manager, "get_config_for_url", lambda _: ("animesdigital", _mock_site_config()))
-    monkeypatch.setattr(routes, "ScraperService", _PlayersScraper)
+    monkeypatch.setattr("app.api.episode.site_manager.get_config_for_url", lambda *args, **kwargs: ("animesdigital", _mock_site_config()))
+    monkeypatch.setattr("app.api.episode.ScraperService", _PlayersScraper)
 
     response = client.get("/episode/135941/players", headers=auth_headers)
     assert response.status_code == 200
@@ -458,12 +458,12 @@ def test_directory_upsert_keeps_unique_url(client, app, auth_headers, monkeypatc
                 ],
             }
 
-    monkeypatch.setattr(routes.site_manager, "get_config_for_url", lambda _: ("animesdigital", _mock_site_config()))
-    monkeypatch.setattr(routes, "ScraperService", _DirectoryScraperV1)
+    monkeypatch.setattr("app.api.embed.site_manager.get_config_for_url", lambda *args, **kwargs: ("animesdigital", _mock_site_config()))
+    monkeypatch.setattr("app.tasks.scraper.ScraperService", _DirectoryScraperV1)
     response = client.get("/get-embed", query_string={"url": directory_url, "force": "true"}, headers=auth_headers)
     assert response.status_code == 200
 
-    monkeypatch.setattr(routes, "ScraperService", _DirectoryScraperV2)
+    monkeypatch.setattr("app.tasks.scraper.ScraperService", _DirectoryScraperV2)
     response = client.get("/get-embed", query_string={"url": directory_url, "force": "true"}, headers=auth_headers)
     assert response.status_code == 200
 

@@ -3,9 +3,9 @@
     "domain": "animesdigital.org",
     "url_patterns": {
       "home": "^https?://animesdigital\\.org/home/?$",
-      "anime_main": "^https?://animesdigital\\.org/anime/[a-z]/[\\w-]+/?$",
-      "episode": "^https?://animesdigital\\.org/video/[a-z]/\\d+/?$",
-      "movie": "^https?://animesdigital\\.org/filme/[\\w-]+/?$"
+      "anime_main": "^https?://animesdigital\\.org/anime/.+",
+      "episode": "^https?://animesdigital\\.org/video/.+",
+      "movie": "^https?://animesdigital\\.org/filme/.+"
     },
     "selectors": {
       "home": {
