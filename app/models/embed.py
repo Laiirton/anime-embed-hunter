@@ -21,6 +21,9 @@ class Episode(db.Model):
     last_updated = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     
     anime = db.relationship('Anime', backref=db.backref('episodes', lazy='selectin'))
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -39,6 +42,9 @@ class Anime(db.Model):
     item_type = db.Column(db.String(50), default='series') # series, movie
     cover_url = db.Column(db.String(500), nullable=True)
     last_scanned = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
     
     def to_dict(self):
         return {
@@ -59,6 +65,9 @@ class EmbedRequest(db.Model):
     response_data = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         import json
@@ -81,6 +90,9 @@ class Favorite(db.Model):
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False, index=True)
 
     anime = db.relationship("Anime", backref=db.backref("favorites", lazy="dynamic"))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -114,6 +126,9 @@ class HistoryEntry(db.Model):
 
     anime = db.relationship("Anime", backref=db.backref("history_entries", lazy="dynamic"))
     episode = db.relationship("Episode", backref=db.backref("history_entries", lazy="dynamic"))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {

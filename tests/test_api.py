@@ -397,7 +397,7 @@ def test_home_featured_uses_scraper_and_caches(client, auth_headers, monkeypatch
     payload = response.get_json()
     assert payload["cached"] is False
     assert payload["total_items"] == 2
-    assert payload["results"][0]["item_type"] == "episode"
+    assert payload["sections"]["releases"][0]["item_type"] == "episode"
 
     response = client.get("/home/featured", headers=auth_headers)
     assert response.status_code == 200
