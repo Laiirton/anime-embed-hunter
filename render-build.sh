@@ -12,5 +12,9 @@ pip install -r requirements.txt
 export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.render/ms-playwright
 playwright install chromium
 
+# Fix alembic_version table if it references deleted migrations
+echo "Checking and fixing alembic_version table..."
+python migrations/fix_alembic_version.py || echo "Warning: Could not fix alembic_version, will try upgrade anyway"
+
 # Run database migrations
 flask db upgrade
