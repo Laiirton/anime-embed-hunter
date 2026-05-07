@@ -56,7 +56,7 @@ def get_anime(slug):
             .limit(limit)
             .all()
         )
-        payload = _serialize_anime(anime)
+        payload = _serialize_anime(anime, include_episodes_count=True)
         payload.update(
             {
                 "page": page,

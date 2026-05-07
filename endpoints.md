@@ -12,7 +12,7 @@ Para favoritos/historico por usuario:
 
 ---
 
-## 1) `GET /catalog`
+## 1) `GET /animes`
 
 O que faz:
 
@@ -29,7 +29,7 @@ Query params:
 
 ---
 
-## 2) `GET /catalog/search`
+## 2) `GET /animes/search`
 
 O que faz:
 

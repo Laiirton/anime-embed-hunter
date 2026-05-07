@@ -194,7 +194,7 @@ def test_cleanup_cache_endpoint_removes_expired_rows(client, app, auth_headers):
         assert EmbedRequest.query.filter_by(url="https://example.com/valid").first() is not None
 
 
-def test_catalog_and_catalog_search_endpoints(client, app, auth_headers):
+def test_animes_endpoints(client, app, auth_headers):
     with app.app_context():
         db.session.add_all(
             [
@@ -206,7 +206,7 @@ def test_catalog_and_catalog_search_endpoints(client, app, auth_headers):
         db.session.commit()
 
     response = client.get(
-        "/catalog",
+        "/animes",
         query_string={"page": 1, "limit": 2, "filter_audio": "legendado"},
         headers=auth_headers,
     )
@@ -217,7 +217,7 @@ def test_catalog_and_catalog_search_endpoints(client, app, auth_headers):
     assert all("dublado" not in item["name"].lower() for item in payload["results"])
 
     response = client.get(
-        "/catalog/search",
+        "/animes/search",
         query_string={"q": "one piece"},
         headers=auth_headers,
     )

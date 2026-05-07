@@ -37,12 +37,18 @@ def _parse_positive_int(value, default, minimum=1, maximum=1000):
         return default
     return max(minimum, min(parsed, maximum))
 
-def _serialize_anime(anime):
+def _serialize_anime(anime, include_episodes_count=False):
+    """
+    Serializa um anime para resposta JSON.
+
+    include_episodes_count: se True, conta episódios via len(anime.episodes).
+    Isso dispara lazy loading (N+1), usar apenas no endpoint de detalhe (/anime/:slug).
+    """
     slug = ""
     marker = "/anime/"
     if anime.url and marker in anime.url:
         slug = anime.url.split(marker, 1)[1].strip("/")
-    return {
+    payload = {
         "id": anime.id,
         "name": anime.name,
         "url": anime.url,
@@ -58,8 +64,10 @@ def _serialize_anime(anime):
         "latest_episode_info": getattr(anime, "latest_episode_info", None),
         "item_type": anime.item_type,
         "last_scanned": anime.last_scanned.isoformat() if anime.last_scanned else None,
-        "episodes_count": len(anime.episodes) if hasattr(anime, "episodes") else 0,
     }
+    if include_episodes_count:
+        payload["episodes_count"] = len(anime.episodes) if hasattr(anime, "episodes") else 0
+    return payload
 
 def _serialize_episode(episode):
     payload = episode.to_dict()
