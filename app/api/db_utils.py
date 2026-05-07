@@ -255,11 +255,18 @@ def _get_or_create_anime(anime_url, anime_title=None, item_type="series", latest
 
     return anime
 
-def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_type="series"):
+def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_type="series", anime_metadata=None):
     try:
         anime = None
         if anime_url:
             anime = _get_or_create_anime(anime_url, anime_title=anime_title, item_type=item_type)
+            if anime and anime_metadata:
+                if anime_metadata.get("synopsis"):
+                    anime.synopsis = anime_metadata["synopsis"]
+                if anime_metadata.get("genres"):
+                    anime.genres = anime_metadata["genres"]
+                if anime_metadata.get("year"):
+                    anime.year = anime_metadata["year"]
 
         for item in episode_list:
             title = clean_name(item.get("title"))

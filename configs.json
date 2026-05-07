@@ -20,6 +20,9 @@
       },
       "anime_main": {
         "title": "h1",
+        "synopsis": ".sinopse",
+        "genres": ".genre a",
+        "info_selectors": ".info",
         "episodes_section": "a[href*='video/']",
         "pagination": "ul.content-pagination li a"
       },

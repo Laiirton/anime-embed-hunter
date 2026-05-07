@@ -81,6 +81,7 @@ class Config:
                     "pool_timeout": cls._DB_POOL_TIMEOUT,
                     "connect_args": {
                         "connect_timeout": cls._DB_CONNECT_TIMEOUT,
+                        "prepare_threshold": None,
                     },
                 }
             )

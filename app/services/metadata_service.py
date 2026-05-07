@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 def fetch_kitsu_metadata(anime_name):
     """Fetch full metadata for an anime from Kitsu API."""
     try:
-        # Search by name
+        # Search by name with genres included
         res = requests.get(
-            f'https://kitsu.io/api/edge/anime?filter[text]={requests.utils.quote(anime_name)}',
+            f'https://kitsu.io/api/edge/anime?filter[text]={requests.utils.quote(anime_name)}&include=genres',
             timeout=10
         )
         if res.status_code == 200:
@@ -47,19 +47,20 @@ def fetch_kitsu_metadata(anime_name):
                 status = status_map.get(attr.get('status'), attr.get('status'))
                 
                 total_episodes = attr.get('episodeCount')
-                synopsis = attr.get('synopsis')
                 rating = attr.get('averageRating')
                 
                 year = None
                 start_date = attr.get('startDate')
                 if start_date:
-                    year = int(start_date.split('-')[0])
-                
+                    try:
+                        year = int(start_date.split('-')[0])
+                    except (ValueError, IndexError):
+                        pass
+
                 return {
                     "cover_url": cover_url,
                     "status": status,
                     "total_episodes": total_episodes,
-                    "synopsis": synopsis,
                     "rating": rating,
                     "year": year
                 }
@@ -74,8 +75,8 @@ def populate_anime_metadata(animes):
     if not animes:
         return animes
 
-    # Filtrar apenas animes que faltam metadados essenciais (ex: total_episodes ou status)
-    missing_metadata = [a for a in animes if not a.total_episodes or not a.status]
+    # Filtrar animes que faltam metadados (total_episodes, status ou genres)
+    missing_metadata = [a for a in animes if not a.total_episodes or not a.status or not a.genres]
     
     if not missing_metadata:
         return animes
@@ -102,6 +103,7 @@ def populate_anime_metadata(animes):
                 if m.get("synopsis"): anime.synopsis = m["synopsis"]
                 if m.get("rating"): anime.rating = m["rating"]
                 if m.get("year"): anime.year = m["year"]
+                if m.get("genres"): anime.genres = m["genres"]
         
         try:
             db.session.commit()

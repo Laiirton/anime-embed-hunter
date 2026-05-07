@@ -29,6 +29,15 @@ def get_anime(slug):
     from app.services.metadata_service import populate_anime_metadata_single
     populate_anime_metadata_single(anime)
 
+    # Trigger background scrape to get PT-BR metadata if missing
+    if not anime.synopsis or not anime.genres:
+        from app import scraper_queue
+        from app.tasks.scraper import run_scraper_task
+        from app.services.site_manager import site_manager
+        site_key, config = site_manager.get_config_for_url(anime.url)
+        if site_key:
+            scraper_queue.enqueue(run_scraper_task, anime.url, config)
+
     default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
     max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
     page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)

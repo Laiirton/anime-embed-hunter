@@ -36,7 +36,11 @@ def run_scraper_task(target_url, config, app=None):
                         result = scraper.extract_episodes(page, target_url, config, selector_key="anime_main")
                         if "error" not in result:
                             # Passamos o target_url como anime_url para garantir a criação do Anime no banco
-                            save_episodes_to_db(result.get("episode_urls", []), anime_url=target_url)
+                            save_episodes_to_db(
+                                result.get("episode_urls", []), 
+                                anime_url=target_url,
+                                anime_metadata=result.get("metadata")
+                            )
 
                     # Caso 4: Movie
                     elif scraper.match_pattern(target_url, url_patterns.get("movie", "")):

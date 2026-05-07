@@ -103,11 +103,45 @@ class ScraperService:
                         'title': link_title
                     })
             
+            # Extract Metadata in PT-BR
+            metadata = page.evaluate("""
+                ({selectors}) => {
+                    const results = {};
+                    
+                    // Synopsis
+                    if (selectors.synopsis) {
+                        const synEl = document.querySelector(selectors.synopsis);
+                        if (synEl) results.synopsis = synEl.innerText.trim();
+                    }
+                    
+                    // Genres
+                    if (selectors.genres) {
+                        const genreEls = Array.from(document.querySelectorAll(selectors.genres));
+                        if (genreEls.length) results.genres = genreEls.map(a => a.innerText.trim()).join(", ");
+                    }
+                    
+                    // Year
+                    if (selectors.info_selectors) {
+                        const infoEls = Array.from(document.querySelectorAll(selectors.info_selectors));
+                        for (const el of infoEls) {
+                            const text = el.innerText;
+                            if (text.includes("Ano")) {
+                                const yearMatch = text.match(/\\d{4}/);
+                                if (yearMatch) results.year = parseInt(yearMatch[0]);
+                            }
+                        }
+                    }
+                    
+                    return results;
+                }
+            """, {"selectors": selectors})
+
             return {
                 'url': url, 
                 'title': title,
                 'total_items': len(urls),
-                'episode_urls': urls
+                'episode_urls': urls,
+                'metadata': metadata
             }
             
         except Exception as e:
