@@ -2,9 +2,12 @@ from flask import Blueprint, jsonify
 import os
 import time
 
+from app import limiter
+
 bp = Blueprint("api", __name__)
 
 @bp.route("/health")
+@limiter.exempt
 def health_check():
     """Health check endpoint for Render."""
     return jsonify({
