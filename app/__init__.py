@@ -24,8 +24,22 @@ def setup_logging():
 from redis import Redis
 from rq import Queue
 
-redis_conn = Redis.from_url(Config.REDIS_URL)
-scraper_queue = Queue("scraper-queue", connection=redis_conn)
+# Lazy initialization - defer connection until first use
+redis_conn = None
+scraper_queue = None
+
+def get_redis_conn():
+    global redis_conn
+    if redis_conn is None:
+        redis_conn = Redis.from_url(Config.REDIS_URL, socket_connect_timeout=5, socket_timeout=5)
+    return redis_conn
+
+def get_scraper_queue():
+    global scraper_queue
+    if scraper_queue is None:
+        scraper_queue = Queue("scraper-queue", connection=get_redis_conn())
+    return scraper_queue
+
 migrate = Migrate()
 
 

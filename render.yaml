@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: "./render-build.sh"
     startCommand: "./start.sh"
+    healthCheckPath: "/health"
     envVars:
       - key: FLASK_APP
         value: run.py
@@ -19,7 +20,7 @@ services:
       - key: HEADLESS
         value: "true"
       - key: BROWSER_TIMEOUT
-        value: "60000"
+        value: "30000"
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "/opt/render/project/.render/ms-playwright"
       - key: PYTHON_VERSION
@@ -43,6 +44,9 @@ services:
           type: redis
           name: anime-embed-hunter-redis
           property: connectionString
+      # Render specific
+      - key: RENDER
+        value: "true"
 
   - type: redis
     name: anime-embed-hunter-redis

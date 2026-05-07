@@ -1,7 +1,7 @@
 import logging
 from flask import current_app, jsonify, request
 
-from app import limiter, scraper_queue
+from app import limiter, get_scraper_queue
 from app.tasks.scraper import run_scraper_task
 from app.services.site_manager import site_manager
 from app.api.routes import bp
@@ -49,13 +49,13 @@ def get_embed():
         
         elif status == "stale":
             # Enfileira tarefa para atualizar em background
-            scraper_queue.enqueue(run_scraper_task, target_url, config)
+            get_scraper_queue().enqueue(run_scraper_task, target_url, config)
             
             # Retorna o dado obsoleto para o usuário
             cached_payload["cached"] = True
             cached_payload["cache_source"] = "embed_requests (stale)"
             return jsonify(cached_payload), 200
-
+    
     # Se chegamos aqui, é um "miss" ou "force_refresh"
-    scraper_queue.enqueue(run_scraper_task, target_url, config)
+    get_scraper_queue().enqueue(run_scraper_task, target_url, config)
     return jsonify({"message": "Scraping task enqueued", "target": target_url}), 202

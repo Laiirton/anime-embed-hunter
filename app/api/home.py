@@ -1,11 +1,8 @@
 import json
 import logging
-from threading import Thread
-
 from flask import current_app, jsonify, request
 
-from app import cache, limiter
-from app.models.embed import EmbedRequest
+from app import limiter, get_scraper_queue
 from app.services.scraper import ScraperService
 from app.services.site_manager import site_manager
 from app.utils.helpers import clean_name, extract_audio_type, format_info

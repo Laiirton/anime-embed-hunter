@@ -36,18 +36,18 @@ def app():
     app = create_app(TestConfig)
     
     # Mock da fila do RQ
-    from app import scraper_queue
-    scraper_queue.enqueue = SyncQueueMock().enqueue
+    from app import get_scraper_queue
+    import unittest.mock
+    
+    # Override get_scraper_queue to return a mock
+    mock_queue = unittest.mock.MagicMock()
+    app.get_scraper_queue = lambda: mock_queue
     
     with app.app_context():
         db.create_all()
-
-
-
-
-
+    
     yield app
-
+    
     with app.app_context():
         db.session.remove()
         db.drop_all()
