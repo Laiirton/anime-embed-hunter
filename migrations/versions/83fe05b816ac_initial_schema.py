@@ -1,13 +1,13 @@
 """initial_schema
 
 Revision ID: 83fe05b816ac
-Revises:
+Revises: 
 Create Date: 2026-05-04 03:15:32.938953
 
 """
 from alembic import op
 import sqlalchemy as sa
-
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = "83fe05b816ac"
@@ -21,10 +21,14 @@ def _has_index(inspector, table_name, index_name):
 
 
 def upgrade():
+    # Set longer statement timeout for Supabase
+    op.execute("SET statement_timeout = '300s'")
+    
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     tables = set(inspector.get_table_names())
 
+    # Create animes table if not exists
     if "animes" not in tables:
         op.create_table(
             "animes",
@@ -41,6 +45,7 @@ def upgrade():
     if not _has_index(inspector, "animes", "ix_animes_url"):
         op.create_index("ix_animes_url", "animes", ["url"], unique=True)
 
+    # Create episodes table if not exists
     if "episodes" not in tables:
         op.create_table(
             "episodes",
@@ -61,6 +66,7 @@ def upgrade():
     if not _has_index(inspector, "episodes", "ix_episodes_anime_id"):
         op.create_index("ix_episodes_anime_id", "episodes", ["anime_id"], unique=False)
 
+    # Create or update embed_requests table
     if "embed_requests" not in tables:
         op.create_table(
             "embed_requests",
@@ -73,15 +79,13 @@ def upgrade():
             sa.UniqueConstraint("url"),
         )
     else:
+        # Check if expires_at column exists and add if not
         columns = {c["name"] for c in inspector.get_columns("embed_requests")}
         if "expires_at" not in columns:
-            with op.batch_alter_table("embed_requests") as batch_op:
-                batch_op.add_column(sa.Column("expires_at", sa.DateTime(), nullable=True))
-
-            op.execute(sa.text("UPDATE embed_requests SET expires_at = COALESCE(expires_at, CURRENT_TIMESTAMP)"))
-
-            with op.batch_alter_table("embed_requests") as batch_op:
-                batch_op.alter_column("expires_at", existing_type=sa.DateTime(), nullable=False)
+            op.add_column("embed_requests", sa.Column("expires_at", sa.DateTime(), nullable=True))
+            op.execute(sa.text("UPDATE embed_requests SET expires_at = COALESCE(timestamp + interval '24 hours', CURRENT_TIMESTAMP + interval '24 hours')"))
+            # Make it non-nullable after populating
+            op.alter_column("embed_requests", "expires_at", existing_type=sa.DateTime(), nullable=False)
 
     inspector = sa.inspect(bind)
     if not _has_index(inspector, "embed_requests", "ix_embed_requests_url"):
@@ -89,12 +93,16 @@ def upgrade():
     if not _has_index(inspector, "embed_requests", "ix_embed_requests_expires_at"):
         op.create_index("ix_embed_requests_expires_at", "embed_requests", ["expires_at"], unique=False)
 
+    # Enable pg_trgm extension for PostgreSQL
     if bind.dialect.name == "postgresql":
         op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         op.execute(
             "CREATE INDEX IF NOT EXISTS ix_animes_name_trgm "
             "ON animes USING gin (name gin_trgm_ops)"
         )
+    
+    # Reset statement timeout
+    op.execute("SET statement_timeout = '30s'")
 
 
 def downgrade():
