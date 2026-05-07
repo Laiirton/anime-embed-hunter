@@ -182,3 +182,4 @@ cython_debug/
 /screenshots
 legacy/
 *.db
+.env.producao

@@ -24,3 +24,27 @@ services:
         value: "/opt/render/project/.render/ms-playwright"
       - key: PYTHON_VERSION
         value: "3.11.9"
+      # Redis (scraper queue)
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: anime-embed-hunter-redis
+          property: connectionString
+      # Cache com Redis em producao
+      - key: CACHE_TYPE
+        value: "flask_caching.backends.rediscache.RedisCache"
+      - key: CACHE_REDIS_URL
+        fromService:
+          type: redis
+          name: anime-embed-hunter-redis
+          property: connectionString
+      - key: RATELIMIT_STORAGE_URI
+        fromService:
+          type: redis
+          name: anime-embed-hunter-redis
+          property: connectionString
+
+  - type: redis
+    name: anime-embed-hunter-redis
+    plan: free
+    ipAllowList: []
