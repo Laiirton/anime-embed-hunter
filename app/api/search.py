@@ -11,6 +11,7 @@ from app.api.utils import (
     _escape_like_pattern,
     check_api_key,
 )
+from app.api.validators import SearchRequest
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +21,23 @@ def search_animes():
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
 
-    query = request.args.get("q", "").strip()
-    if not query:
-        return jsonify({"error": 'Query parameter "q" is required'}), 400
+    try:
+        # Validate request parameters with Pydantic
+        search_req = SearchRequest(
+            q=request.args.get("q"),
+            page=request.args.get("page"),
+            limit=request.args.get("limit"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
-    cache_key = _build_search_cache_key(query)
+    cache_key = _build_search_cache_key(search_req.q)
     cached = cache.get(cache_key)
     if cached:
         return jsonify({**cached, "cached": True}), 200
 
     try:
-        escaped_query = _escape_like_pattern(query)
+        escaped_query = _escape_like_pattern(search_req.q)
         results = (
             Anime.query.filter(Anime.name.ilike(f"%{escaped_query}%", escape="\\"))
             .limit(current_app.config.get("SEARCH_LIMIT", 50))
@@ -41,7 +48,7 @@ def search_animes():
         populate_anime_metadata(results)
         
         payload = {
-            "query": query,
+            "query": search_req.q,
             "total_found": len(results),
             "results": [anime.to_dict() for anime in results],
             "cached": False,

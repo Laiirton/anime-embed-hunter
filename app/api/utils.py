@@ -40,9 +40,9 @@ def _parse_positive_int(value, default, minimum=1, maximum=1000):
 def _serialize_anime(anime, include_episodes_count=False):
     """
     Serializa um anime para resposta JSON.
-
+    
     include_episodes_count: se True, conta episódios via len(anime.episodes).
-    Isso dispara lazy loading (N+1), usar apenas no endpoint de detalhe (/anime/:slug).
+    Requer que os episódios tenham sido carregados previamente via selectinload().
     """
     slug = ""
     marker = "/anime/"
@@ -66,7 +66,9 @@ def _serialize_anime(anime, include_episodes_count=False):
         "last_scanned": anime.last_scanned.isoformat() if anime.last_scanned else None,
     }
     if include_episodes_count:
-        payload["episodes_count"] = len(anime.episodes) if hasattr(anime, "episodes") else 0
+        # Assume que episodes foi carregado via selectinload() na query
+        # len(anime.episodes) usa a coleção já carregada, sem N+1
+        payload["episodes_count"] = len(anime.episodes) if anime.episodes else 0
     return payload
 
 def _serialize_episode(episode):
@@ -168,7 +170,7 @@ def _resolve_anime_by_slug(slug):
 
     return Anime.query.filter(Anime.url.ilike(f"%/anime/%/{normalized}")).first()
 
-def _resolve_episode_url_by_id(episode_id):
+def _resolve_episode_url_by_id(episode_id, prefix=None):
     episode = (
         Episode.query.filter(Episode.url.like(f"%/video/%/{episode_id}%"))
         .order_by(Episode.last_updated.desc())
@@ -177,9 +179,10 @@ def _resolve_episode_url_by_id(episode_id):
     if episode:
         return episode.url, episode
 
-    prefix = (request.args.get("prefix") or "a").strip().lower()
-    if not re.match(r"^[a-z0-9-]+$", prefix):
-        prefix = "a"
+    if prefix is None:
+        prefix = (request.args.get("prefix") or "a").strip().lower()
+        if not re.match(r"^[a-z0-9-]+$", prefix):
+            prefix = "a"
     return f"https://animesdigital.org/video/{prefix}/{episode_id}", None
 
 def _is_valid_http_url(value):

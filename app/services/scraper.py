@@ -3,19 +3,28 @@ import random
 import time
 import re
 import os
-import threading
 import asyncio
 from typing import List, Dict, Any
 from urllib.parse import urljoin
-from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
 from app.core.config import Config
 from pydantic import BaseModel
 
+from app.services.browser_pool import get_browser_pool
+
 
 class ScraperService:
+    """
+    Scraper service that uses a browser pool for reuse.
+    
+    Uses the BrowserPool from browser_pool.py to avoid
+    the ~2-4 second startup cost per scrape.
+    Falls back to creating a browser directly if pool is exhausted.
+    """
+    
     def __init__(self):
-        self.playwright = None
         self.browser = None
+        self._from_pool = False
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
@@ -27,26 +36,47 @@ class ScraperService:
         except Exception:
             pass
 
-        self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(
-            headless=Config.HEADLESS,
-            args=[
-                "--no-sandbox", 
-                "--disable-setuid-sandbox", 
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--no-first-run",
-                "--no-zygote"
-            ]
-        )
+        # Try to get browser from pool first
+        pool = get_browser_pool()
+        browser = pool.acquire()
+        
+        if browser:
+            self.browser = browser
+            self._from_pool = True
+            self.logger.info("Acquired browser from pool")
+        else:
+            # Fallback: create browser directly (exhausted pool or error)
+            self.logger.info("Browser pool exhausted, creating standalone browser")
+            from playwright.sync_api import sync_playwright
+            self.playwright = sync_playwright().start()
+            self.browser = self.playwright.chromium.launch(
+                headless=Config.HEADLESS,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-software-rasterizer",
+                    "--no-first-run",
+                    "--no-zygote"
+                ]
+            )
+            self._from_pool = False
+            
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.browser:
-            self.browser.close()
-        if self.playwright:
-            self.playwright.stop()
+            if self._from_pool:
+                # Release back to pool for reuse
+                pool = get_browser_pool()
+                pool.release(self.browser)
+                self.logger.info("Released browser back to pool")
+            else:
+                # Close standalone browser
+                self.browser.close()
+                if hasattr(self, 'playwright') and self.playwright:
+                    self.playwright.stop()
 
     def _get_context(self) -> BrowserContext:
         context = self.browser.new_context(

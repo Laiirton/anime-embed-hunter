@@ -37,12 +37,21 @@ class Config:
 
     SQLALCHEMY_ENGINE_OPTIONS = {}
 
+    # Unified Cache Configuration
     CACHE_TYPE = os.getenv("CACHE_TYPE", "flask_caching.backends.simplecache.SimpleCache")
     CACHE_DEFAULT_TIMEOUT = int(os.getenv("CACHE_DEFAULT_TIMEOUT", "300"))
     CACHE_REDIS_URL = os.getenv("CACHE_REDIS_URL")
+    
+    # TTLs centralizados (em segundos para volatile, horas para persistente)
     SEARCH_CACHE_TTL_SECONDS = int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "120"))
+    CATALOG_CACHE_TTL_SECONDS = int(os.getenv("CATALOG_CACHE_TTL_SECONDS", "120"))
+    CATALOG_SEARCH_CACHE_TTL_SECONDS = int(os.getenv("CATALOG_SEARCH_CACHE_TTL_SECONDS", "60"))
     HOME_FEATURED_CACHE_TTL_SECONDS = int(os.getenv("HOME_FEATURED_CACHE_TTL_SECONDS", "1800"))
+    HOME_FEATURED_CACHE_TTL_HOURS = HOME_FEATURED_CACHE_TTL_SECONDS / 3600.0
+    
+    # Persistent cache (EmbedRequest DB table)
     EMBED_CACHE_TTL_HOURS = int(os.getenv("EMBED_CACHE_TTL_HOURS", "24"))
+    EMBED_CACHE_TTL_SECONDS = EMBED_CACHE_TTL_HOURS * 3600
     EMBED_CACHE_CLEANUP_INTERVAL_SECONDS = int(
         os.getenv("EMBED_CACHE_CLEANUP_INTERVAL_SECONDS", "900")
     )

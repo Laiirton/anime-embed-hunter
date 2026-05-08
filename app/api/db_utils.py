@@ -1,14 +1,13 @@
-import json
 import logging
-from datetime import timedelta
 from threading import Lock
 
 from flask import current_app
+
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models.embed import Anime, EmbedRequest, Episode, db
+from app.models.embed import Anime, Episode, db
 from app.services.cache_maintenance import delete_expired_embed_cache
 from app.utils.helpers import clean_name, extract_audio_type, format_info
 from app.api.utils import _utcnow
@@ -17,6 +16,7 @@ logger = logging.getLogger(__name__)
 _cache_cleanup_lock = Lock()
 _last_embed_cache_cleanup_at = None
 
+
 def _get_insert_builder(table):
     dialect = db.session.get_bind().dialect.name
     if dialect == "postgresql":
@@ -24,6 +24,7 @@ def _get_insert_builder(table):
     if dialect == "sqlite":
         return sqlite_insert(table), dialect
     return None, dialect
+
 
 def _cleanup_expired_embed_cache_if_needed(force=False):
     global _last_embed_cache_cleanup_at
@@ -57,82 +58,6 @@ def _cleanup_expired_embed_cache_if_needed(force=False):
             logger.warning("Failed to cleanup expired embed cache: %s", exc)
             _last_embed_cache_cleanup_at = now
             return 0
-
-def _load_embed_cache(url):
-    entry = EmbedRequest.query.filter_by(url=url).first()
-    if not entry:
-        return None
-
-    now = _utcnow()
-    if not entry.expires_at or entry.expires_at <= now:
-        return None
-
-    try:
-        return json.loads(entry.response_data)
-    except json.JSONDecodeError:
-        logger.warning("Invalid cached JSON for URL: %s", url)
-        return None
-def get_embed_with_swr(url, ttl_hours=24):
-    entry = EmbedRequest.query.filter_by(url=url).first()
-    if not entry:
-        return None, "miss"
-    
-    if entry.expires_at < _utcnow():
-        try:
-            return json.loads(entry.response_data), "stale" # Dados obsoletos, disparar background task
-        except (json.JSONDecodeError, TypeError):
-            return None, "miss"
-        
-    try:
-        return json.loads(entry.response_data), "fresh" # Dados frescos
-    except (json.JSONDecodeError, TypeError):
-        return None, "miss"
-
-def _save_to_embed_cache(url, data):
-    ttl_hours = max(1, int(current_app.config.get("EMBED_CACHE_TTL_HOURS", 24)))
-    expires_at = _utcnow() + timedelta(hours=ttl_hours)
-
-    try:
-        payload = json.dumps(data)
-        now = _utcnow()
-        row = {
-            "url": url,
-            "response_data": payload,
-            "expires_at": expires_at,
-            "timestamp": now,
-        }
-        insert_stmt, dialect = _get_insert_builder(EmbedRequest.__table__)
-        if insert_stmt is not None and dialect in {"postgresql", "sqlite"}:
-            stmt = insert_stmt.values([row])
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["url"],
-                set_={
-                    "response_data": stmt.excluded.response_data,
-                    "expires_at": stmt.excluded.expires_at,
-                    "timestamp": stmt.excluded.timestamp,
-                },
-            )
-            db.session.execute(stmt)
-        else:
-            entry = EmbedRequest.query.filter_by(url=url).first()
-            if entry:
-                entry.response_data = payload
-                entry.expires_at = expires_at
-                entry.timestamp = now
-            else:
-                db.session.add(
-                    EmbedRequest(
-                        url=url,
-                        response_data=payload,
-                        expires_at=expires_at,
-                        timestamp=now,
-                    )
-                )
-
-        db.session.commit()
-    except SQLAlchemyError as exc:
-        db.session.rollback()
-        logger.error("DB error while saving embed cache: %s", exc)
 
 def save_animes_to_db(anime_list):
     try:
@@ -195,12 +120,18 @@ def save_animes_to_db(anime_list):
                 if anime:
                     if row.get("audio_type"):
                         anime.audio_type = row["audio_type"]
-                    if row.get("status"): anime.status = row["status"]
-                    if row.get("total_episodes"): anime.total_episodes = row["total_episodes"]
-                    if row.get("synopsis"): anime.synopsis = row["synopsis"]
-                    if row.get("rating"): anime.rating = row["rating"]
-                    if row.get("year"): anime.year = row["year"]
-                    if row.get("genres"): anime.genres = row["genres"]
+                    if row.get("status"):
+                        anime.status = row["status"]
+                    if row.get("total_episodes"):
+                        anime.total_episodes = row["total_episodes"]
+                    if row.get("synopsis"):
+                        anime.synopsis = row["synopsis"]
+                    if row.get("rating"):
+                        anime.rating = row["rating"]
+                    if row.get("year"):
+                        anime.year = row["year"]
+                    if row.get("genres"):
+                        anime.genres = row["genres"]
                     if row["latest_episode_info"]:
                         anime.latest_episode_info = row["latest_episode_info"]
                 else:

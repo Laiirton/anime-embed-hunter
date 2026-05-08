@@ -1,22 +1,19 @@
 import hashlib
 import logging
-from typing import Optional
 
-from flask import current_app, jsonify, request
+from flask import jsonify, request
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import cache, limiter
-from app.models.embed import Anime, Episode
+from app.models.embed import Anime
 from app.api.routes import bp
 from app.api.utils import (
-    _build_catalog_filters,
-    _parse_positive_int,
     _resolve_catalog_order,
     _serialize_anime,
     check_api_key,
-    _escape_like_pattern,
 )
+from app.api.validators import CatalogRequest, SearchRequest
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +84,20 @@ def get_animes():
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
 
-    default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
-    max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
-    page = _parse_positive_int(request.args.get("page") or request.args.get("pagina"), 1, 1, 100000)
-    limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
+    try:
+        # Validate request parameters with Pydantic
+        catalog_req = CatalogRequest(
+            page=request.args.get("page") or request.args.get("pagina"),
+            limit=request.args.get("limit"),
+            search=request.args.get("search"),
+            filter_letter=request.args.get("filter_letter"),
+            filter_audio=request.args.get("filter_audio"),
+            order=request.args.get("order") or request.args.get("filter_order"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
+    from app.api.utils import _build_catalog_filters
     filters, unsupported_filters = _build_catalog_filters()
     order_key, order_clause = _resolve_catalog_order()
 
@@ -104,11 +110,12 @@ def get_animes():
         return jsonify({**cached, "cached": True}), 200
 
     try:
-        query = Anime.query
+        from sqlalchemy.orm import selectinload
+        query = Anime.query.options(selectinload(Anime.episodes))
         if filters:
             query = query.filter(*filters)
 
-        result = _paginated_query(query, page, limit, order_clause)
+        result = _paginated_query(query, catalog_req.page, catalog_req.limit, order_clause)
 
         payload = {
             "page": result["page"],
@@ -139,32 +146,34 @@ def animes_search():
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
 
-    query = (request.args.get("q") or request.args.get("search") or "").strip()
-    if not query:
-        return jsonify({"error": 'Query parameter "q" is required'}), 400
+    try:
+        # Validate request parameters with Pydantic
+        search_req = SearchRequest(
+            q=request.args.get("q") or request.args.get("search"),
+            page=request.args.get("page"),
+            limit=request.args.get("limit"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
-    default_limit = max(1, int(current_app.config.get("DEFAULT_PAGE_SIZE", 30)))
-    max_limit = max(default_limit, int(current_app.config.get("MAX_PAGE_SIZE", 100)))
-    page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
-    limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
-
-    # Cache key para busca
-    cache_key = _make_cache_key(f"animes_search:{query}")
+    cache_key = _make_cache_key(f"animes_search:{search_req.q}")
 
     cached = cache.get(cache_key)
     if cached:
         return jsonify({**cached, "cached": True}), 200
 
-    escaped = _escape_like_pattern(query)
     try:
-        query_builder = Anime.query.filter(
-            Anime.name.ilike(f"%{escaped}%", escape="\\")
+        from sqlalchemy.orm import selectinload
+        query_builder = (
+            Anime.query
+            .options(selectinload(Anime.episodes))
+            .filter(Anime.name.ilike(f"%{search_req.q}%", escape="\\"))
         )
 
-        result = _paginated_query(query_builder, page, limit, Anime.name.asc())
+        result = _paginated_query(query_builder, search_req.page, search_req.limit, Anime.name.asc())
 
         payload = {
-            "query": query,
+            "query": search_req.q,
             "page": result["page"],
             "limit": result["limit"],
             "total_pages": result["total_pages"],

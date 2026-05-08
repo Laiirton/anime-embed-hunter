@@ -7,10 +7,11 @@ from flask_cors import CORS
 from app.core.config import Config
 from app.models.embed import db
 import os
+import logging
+import atexit
+from pythonjsonlogger import jsonlogger
 
 cache = Cache()
-import logging
-from pythonjsonlogger import jsonlogger
 
 def setup_logging():
     logger = logging.getLogger()
@@ -20,36 +21,30 @@ def setup_logging():
     logger.addHandler(logHandler)
     logger.setLevel(logging.INFO)
 
-# Chamar setup_logging() em create_app
-from redis import Redis
-from rq import Queue
-
 # Lazy initialization - defer connection until first use
+migrate = Migrate()
 redis_conn = None
 scraper_queue = None
 
 def get_redis_conn():
     global redis_conn
     if redis_conn is None:
+        from redis import Redis
         redis_conn = Redis.from_url(Config.REDIS_URL, socket_connect_timeout=5, socket_timeout=5)
     return redis_conn
 
 def get_scraper_queue():
     global scraper_queue
     if scraper_queue is None:
+        from rq import Queue
         scraper_queue = Queue("scraper-queue", connection=get_redis_conn())
     return scraper_queue
-
-migrate = Migrate()
-
 
 def _rate_limit_key():
     api_key = request.headers.get("X-API-KEY", "anonymous")
     return f"{api_key}:{get_remote_address()}"
 
-
 limiter = Limiter(key_func=_rate_limit_key)
-
 
 def _validate_required_config(app):
     missing = []
@@ -59,7 +54,6 @@ def _validate_required_config(app):
         missing.append("API_KEY")
     if missing:
         raise RuntimeError("Missing required environment variables: " + ", ".join(missing))
-
 
 def create_app(config_class=Config):
     setup_logging()
@@ -81,6 +75,20 @@ def create_app(config_class=Config):
     os.makedirs(app.instance_path, exist_ok=True)
     screenshots_path = os.path.abspath(os.path.join(app.root_path, "..", "screenshots"))
     os.makedirs(screenshots_path, exist_ok=True)
+    
+    # Initialize browser pool
+    from app.services.browser_pool import get_browser_pool
+    get_browser_pool()  # Eager initialization
+    logger = logging.getLogger(__name__)
+    logger.info("Browser pool initialized")
+    
+    # Register cleanup on exit
+    def cleanup():
+        from app.services.browser_pool import shutdown_browser_pool
+        shutdown_browser_pool()
+        logger.info("Browser pool shut down")
+    
+    atexit.register(cleanup)
     
     # Register blueprints
     from app.api.routes import bp as api_bp

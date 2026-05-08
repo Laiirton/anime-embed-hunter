@@ -57,7 +57,7 @@ class Anime(db.Model):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-    
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -74,7 +74,6 @@ class Anime(db.Model):
             'genres': self.genres,
             'latest_episode_info': self.latest_episode_info,
             'last_scanned': self.last_scanned.isoformat() if self.last_scanned else None,
-            'episodes_count': len(self.episodes) if hasattr(self, 'episodes') else 0
         }
 
 class EmbedRequest(db.Model):

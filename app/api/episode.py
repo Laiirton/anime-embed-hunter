@@ -1,5 +1,4 @@
 import logging
-import re
 
 from flask import current_app, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,6 +14,7 @@ from app.api.utils import (
     _serialize_episode,
     check_api_key,
 )
+from app.api.validators import EpisodePlayersRequest
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,18 @@ def get_episode_players(episode_id):
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
 
-    if not re.fullmatch(r"\d+", str(episode_id)):
-        return jsonify({"error": "Episode id must be numeric"}), 400
+    try:
+        # Validate request parameters with Pydantic
+        ep_req = EpisodePlayersRequest(
+            episode_id=episode_id,
+            prefix=request.args.get("prefix")
+        )
+        episode_id = ep_req.episode_id
+        prefix = ep_req.prefix
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
-    episode_url, episode = _resolve_episode_url_by_id(episode_id)
+    episode_url, episode = _resolve_episode_url_by_id(episode_id, prefix)
     site_key, config = site_manager.get_config_for_url(episode_url)
     if not site_key:
         return jsonify({"error": "URL domain not supported"}), 400
@@ -66,7 +74,12 @@ def get_lancamentos():
     limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
 
     try:
-        query_builder = Episode.query.order_by(Episode.last_updated.desc(), Episode.id.desc())
+        from sqlalchemy.orm import selectinload
+        query_builder = (
+            Episode.query
+            .options(selectinload(Episode.anime))
+            .order_by(Episode.last_updated.desc(), Episode.id.desc())
+        )
         total_results = query_builder.count()
         total_pages = max(1, (total_results + limit - 1) // limit)
         if page > total_pages:

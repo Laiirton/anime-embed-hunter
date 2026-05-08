@@ -2,13 +2,13 @@ import logging
 
 from flask import current_app, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import selectinload
 
 from app import limiter
-from app.models.embed import Episode
+from app.models.embed import Anime, Episode
 from app.api.routes import bp
 from app.api.utils import (
     _parse_positive_int,
-    _resolve_anime_by_slug,
     _serialize_anime,
     _serialize_episode,
     check_api_key,
@@ -22,7 +22,16 @@ def get_anime(slug):
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
 
-    anime = _resolve_anime_by_slug(slug)
+    # Carrega anime com episódios via selectinload para evitar N+1
+    anime = (
+        Anime.query
+        .options(selectinload(Anime.episodes))
+        .filter(
+            (Anime.url.ilike(f"%/anime/%/{slug}")) |
+            (Anime.url == f"https://animesdigital.org/anime/{slug}")
+        )
+        .first()
+    )
     if not anime:
         return jsonify({"error": "Anime not found"}), 404
 
@@ -44,7 +53,7 @@ def get_anime(slug):
     limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
 
     try:
-        episode_query = Episode.query.filter_by(anime_id=anime.id)
+        episode_query = Episode.query.options(selectinload(Episode.anime)).filter_by(anime_id=anime.id)
         total_episodes = episode_query.count()
         total_pages = max(1, (total_episodes + limit - 1) // limit)
         if page > total_pages:
@@ -56,6 +65,7 @@ def get_anime(slug):
             .limit(limit)
             .all()
         )
+        # Usa episódios já carregados via selectinload, sem N+1
         payload = _serialize_anime(anime, include_episodes_count=True)
         payload.update(
             {
