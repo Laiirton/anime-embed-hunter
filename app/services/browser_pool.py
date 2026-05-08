@@ -169,7 +169,7 @@ class BrowserPool:
             logger.info("Browser pool shut down")
 
 
-def get_browser_pool(max_browsers: int = 1) -> BrowserPool:
+def get_browser_pool(max_browsers: int = 2) -> BrowserPool:
     """Get the thread-local browser pool instance."""
     if not hasattr(_local, 'pool'):
         _local.pool = BrowserPool(max_browsers=max_browsers, browser_ttl_seconds=120)

@@ -1,4 +1,5 @@
 import logging
+import re
 
 from flask import current_app, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 def get_anime(slug):
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
+
+    if not slug or not re.match(r"^[a-zA-Z0-9._~-]{1,255}$", slug):
+        return jsonify({"error": "Invalid slug"}), 400
 
     # Carrega anime com episódios via selectinload para evitar N+1
     anime = (

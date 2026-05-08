@@ -68,7 +68,7 @@ def create_app(config_class=Config):
     db.init_app(app)
     cache.init_app(app)
     limiter.init_app(app)
-    CORS(app)
+    CORS(app, origins=os.getenv("CORS_ORIGINS", "*"))
     migrate.init_app(app, db)
 
     # Ensure instance folder exists

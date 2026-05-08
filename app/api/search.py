@@ -22,7 +22,6 @@ def search_animes():
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        # Validate request parameters with Pydantic
         search_req = SearchRequest(
             q=request.args.get("q"),
             page=request.args.get("page"),
@@ -38,18 +37,26 @@ def search_animes():
 
     try:
         escaped_query = _escape_like_pattern(search_req.q)
+        query = Anime.query.filter(Anime.name.ilike(f"%{escaped_query}%", escape="\\"))
+        total_found = query.count()
+        total_pages = max(1, (total_found + search_req.limit - 1) // search_req.limit)
+        page = min(search_req.page, total_pages)
         results = (
-            Anime.query.filter(Anime.name.ilike(f"%{escaped_query}%", escape="\\"))
-            .limit(current_app.config.get("SEARCH_LIMIT", 50))
+            query.order_by(Anime.name)
+            .offset((page - 1) * search_req.limit)
+            .limit(search_req.limit)
             .all()
         )
-        
+
         from app.services.metadata_service import populate_anime_metadata
         populate_anime_metadata(results)
-        
+
         payload = {
             "query": search_req.q,
-            "total_found": len(results),
+            "page": page,
+            "limit": search_req.limit,
+            "total_pages": total_pages,
+            "total_found": total_found,
             "results": [anime.to_dict() for anime in results],
             "cached": False,
         }
