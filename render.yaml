@@ -20,7 +20,7 @@ services:
       - key: HEADLESS
         value: "true"
       - key: BROWSER_TIMEOUT
-        value: "30000"
+        value: "15000"
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "/opt/render/project/.render/ms-playwright"
       - key: PYTHON_VERSION

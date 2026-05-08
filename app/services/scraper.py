@@ -59,6 +59,23 @@ class ScraperService:
             return False
         return re.match(pattern, url) is not None
 
+    def _goto_with_retry(self, page: Page, url: str, retries: int = 2) -> None:
+        """page.goto() com retry e backoff exponencial."""
+        last_exc = None
+        for attempt in range(retries + 1):
+            try:
+                page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+                return
+            except Exception as e:
+                last_exc = e
+                if attempt < retries:
+                    self.logger.warning(
+                        "page.goto attempt %d/%d failed for %s: %s",
+                        attempt + 1, retries + 1, url, e
+                    )
+                    time.sleep(2 ** attempt)
+        raise last_exc
+
     def extract_episodes(self, page: Page, url: str, config: Any, selector_key: str = 'anime_main') -> Dict[str, Any]:
         if isinstance(config, BaseModel):
             config = config.model_dump()
@@ -73,7 +90,7 @@ class ScraperService:
             if bypass_js:
                 return self._extract_via_iframe_bypass(page, url, episodes_selector)
             
-            page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+            self._goto_with_retry(page, url)
             page.wait_for_selector(episodes_selector, timeout=30000)
 
             # Extract page title as anime name
@@ -154,7 +171,7 @@ class ScraperService:
             return self.extract_episodes(page, url, config, selector_key="home")
 
         try:
-            page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+            self._goto_with_retry(page, url)
             # Wait for some common element
             page.wait_for_selector("div.header_title", timeout=30000)
 
@@ -283,7 +300,7 @@ class ScraperService:
         iframe_selectors = config.get("selectors", {}).get("episode", {}).get("iframe_selectors", [])
 
         try:
-            page.goto(episode_url, timeout=Config.BROWSER_TIMEOUT)
+            self._goto_with_retry(page, episode_url)
             ep_title = self._extract_episode_title(page, config)
 
             ordered_sources = []
@@ -348,7 +365,7 @@ class ScraperService:
         pagination_selector = selectors.get('pagination_info')
 
         try:
-            page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+            self._goto_with_retry(page, url)
             page.wait_for_selector(item_selector, timeout=30000)
 
             # Extract pagination info

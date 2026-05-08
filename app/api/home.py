@@ -1,4 +1,5 @@
 import logging
+import threading
 from flask import jsonify, request, current_app
 from app import limiter, get_scraper_queue
 from app.services.scraper import ScraperService
@@ -73,6 +74,10 @@ def _has_unknown_items(payload):
     return any(item.get("item_type") == "unknown" for item in all_items)
 
 
+
+_inflight_scrapes = set()
+_inflight_lock = threading.Lock()
+
 def _scrape_home_featured(url=None, force_refresh=False):
     if url is None:
         url = "https://animesdigital.org/home"
@@ -116,6 +121,11 @@ def _scrape_home_featured(url=None, force_refresh=False):
     site_key, config = site_manager.get_config_for_url(home_url)
     if not site_key:
         return {"error": "URL domain not supported"}, 400
+
+    with _inflight_lock:
+        if cache_key in _inflight_scrapes:
+            return {"error": "Scrape in progress, retry shortly"}, 202
+        _inflight_scrapes.add(cache_key)
 
     try:
         with ScraperService() as scraper:
@@ -179,10 +189,14 @@ def _scrape_home_featured(url=None, force_refresh=False):
                 
                 return payload, 200
             finally:
+                page.close()
                 context.close()
     except Exception as exc:
         logger.error("Unexpected error scraping home featured: %s", exc)
         return {"error": "Internal server error"}, 500
+    finally:
+        with _inflight_lock:
+            _inflight_scrapes.discard(cache_key)
 
 
 @bp.route("/home/featured", methods=["GET"])

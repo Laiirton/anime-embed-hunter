@@ -58,7 +58,6 @@ class BrowserPool:
                 "--disable-software-rasterizer",
                 "--no-first-run",
                 "--no-zygote",
-                "--single-process",
                 "--disable-extensions",
                 "--disable-background-networking",
                 "--disable-sync",
@@ -67,7 +66,7 @@ class BrowserPool:
                 "--disable-component-update",
                 "--mute-audio",
                 "--hide-scrollbars",
-                "--js-flags=--max-old-space-size=128",
+                "--js-flags=--max-old-space-size=256",
             ]
         )
         logger.info("Created new browser instance")
