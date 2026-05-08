@@ -199,43 +199,76 @@ def save_episodes_to_db(episode_list, anime_url=None, anime_title=None, item_typ
                 if anime_metadata.get("year"):
                     anime.year = anime_metadata["year"]
 
+        now = _utcnow()
+        deduped = {}
         for item in episode_list:
             title = clean_name(item.get("title"))
             url = item.get("episode_url") or item.get("url")
-            embed_url = item.get("embed_url")
-            info = format_info(item.get("info"))
-
             if not url:
                 continue
+            deduped[url] = {
+                "title": title,
+                "url": url,
+                "embed_url": item.get("embed_url"),
+                "info": format_info(item.get("info")),
+                "audio_type": item.get("audio_type") or extract_audio_type(item.get("title") or ""),
+                "anime_id": anime.id if anime else None,
+                "last_updated": now,
+            }
 
-            ep = Episode.query.filter_by(url=url).first()
-            if ep:
-                ep.title = title
-                if embed_url:
-                    ep.embed_url = embed_url
-                if info:
-                    ep.info = info
-                if item.get("audio_type"):
-                    ep.audio_type = item["audio_type"]
-                elif not ep.audio_type:
-                    ep.audio_type = extract_audio_type(item.get("title") or "")
-                ep.last_updated = _utcnow()
-                if anime and ep.anime_id != anime.id:
-                    ep.anime_id = anime.id
-            else:
-                ep = Episode(
-                    title=title,
-                    url=url,
-                    embed_url=embed_url,
-                    info=info,
-                    audio_type=item.get("audio_type") or extract_audio_type(item.get("title") or ""),
-                    anime_id=anime.id if anime else None,
-                    last_updated=_utcnow(),
-                )
-                db.session.add(ep)
+        if not deduped:
+            if anime:
+                anime.last_scanned = now
+                db.session.commit()
+            return
+
+        rows = list(deduped.values())
+        insert_stmt, dialect = _get_insert_builder(Episode.__table__)
+        if insert_stmt is not None and dialect in {"postgresql", "sqlite"}:
+            stmt = insert_stmt.values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["url"],
+                set_={
+                    "title": stmt.excluded.title,
+                    "embed_url": db.func.coalesce(stmt.excluded.embed_url, Episode.embed_url),
+                    "info": stmt.excluded.info,
+                    "audio_type": stmt.excluded.audio_type,
+                    "anime_id": db.func.coalesce(stmt.excluded.anime_id, Episode.anime_id),
+                    "last_updated": stmt.excluded.last_updated,
+                },
+            )
+            db.session.execute(stmt)
+        else:
+            urls = [row["url"] for row in rows]
+            existing = {
+                ep.url: ep
+                for ep in Episode.query.filter(Episode.url.in_(urls)).all()
+            }
+            for row in rows:
+                ep = existing.get(row["url"])
+                if ep:
+                    ep.title = row["title"]
+                    if row["embed_url"]:
+                        ep.embed_url = row["embed_url"]
+                    if row["info"]:
+                        ep.info = row["info"]
+                    ep.audio_type = row["audio_type"]
+                    if row["anime_id"] and ep.anime_id != row["anime_id"]:
+                        ep.anime_id = row["anime_id"]
+                    ep.last_updated = row["last_updated"]
+                else:
+                    db.session.add(Episode(
+                        title=row["title"],
+                        url=row["url"],
+                        embed_url=row["embed_url"],
+                        info=row["info"],
+                        audio_type=row["audio_type"],
+                        anime_id=row["anime_id"],
+                        last_updated=row["last_updated"],
+                    ))
 
         if anime:
-            anime.last_scanned = _utcnow()
+            anime.last_scanned = now
 
         db.session.commit()
     except SQLAlchemyError as exc:
