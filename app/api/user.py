@@ -69,10 +69,8 @@ def favorites():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    profile_key = _resolve_profile_key(fav_req.dict())
+    profile_key = _resolve_profile_key(fav_req.model_dump())
     anime_url = fav_req.url
-    if not anime_url:
-        return jsonify({"error": 'Field "url" is required'}), 400
 
     try:
         anime = Anime.query.filter_by(url=anime_url).first()
@@ -160,10 +158,8 @@ def history():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    profile_key = _resolve_profile_key(hist_req.dict())
+    profile_key = _resolve_profile_key(hist_req.model_dump())
     content_url = hist_req.url
-    if not content_url:
-        return jsonify({"error": 'Field "url" is required'}), 400
 
     try:
         episode = Episode.query.filter_by(url=content_url).first()

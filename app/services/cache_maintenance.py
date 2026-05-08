@@ -3,10 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 
 from app.models.embed import EmbedRequest, db
-
-
-def _utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from app.api.utils import _utcnow
 
 
 def delete_expired_embed_cache(batch_size=1000, now=None):

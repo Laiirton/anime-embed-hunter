@@ -110,8 +110,7 @@ def get_animes():
         return jsonify({**cached, "cached": True}), 200
 
     try:
-        from sqlalchemy.orm import selectinload
-        query = Anime.query.options(selectinload(Anime.episodes))
+        query = Anime.query
         if filters:
             query = query.filter(*filters)
 
@@ -163,10 +162,8 @@ def animes_search():
         return jsonify({**cached, "cached": True}), 200
 
     try:
-        from sqlalchemy.orm import selectinload
         query_builder = (
             Anime.query
-            .options(selectinload(Anime.episodes))
             .filter(Anime.name.ilike(f"%{search_req.q}%", escape="\\"))
         )
 

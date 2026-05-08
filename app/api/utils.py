@@ -68,7 +68,7 @@ def _serialize_anime(anime, include_episodes_count=False):
     if include_episodes_count:
         # Assume que episodes foi carregado via selectinload() na query
         # len(anime.episodes) usa a coleção já carregada, sem N+1
-        payload["episodes_count"] = len(anime.episodes) if anime.episodes else 0
+        payload["episodes_count"] = anime.total_episodes if anime.total_episodes is not None else (len(anime.episodes) if anime.episodes else 0)
     return payload
 
 def _serialize_episode(episode):

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
 import os
-import time
+from datetime import datetime, timezone
 
 from app import limiter
 
@@ -12,7 +12,7 @@ def health_check():
     """Health check endpoint for Render."""
     return jsonify({
         "status": "ok",
-        "timestamp": time.time(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "render_free_tier": os.getenv("RENDER", "false")
     }), 200
 
