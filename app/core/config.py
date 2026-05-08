@@ -64,7 +64,7 @@ class Config:
 
     # Scraper settings
     HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
-    BROWSER_TIMEOUT = int(os.getenv("BROWSER_TIMEOUT", "60000"))
+    BROWSER_TIMEOUT = int(os.getenv("BROWSER_TIMEOUT", "15000"))
 
     SEARCH_LIMIT = int(os.getenv("SEARCH_LIMIT", "50"))
     DEFAULT_PAGE_SIZE = int(os.getenv("DEFAULT_PAGE_SIZE", "30"))

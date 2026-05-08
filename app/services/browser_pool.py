@@ -57,7 +57,17 @@ class BrowserPool:
                 "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--no-first-run",
-                "--no-zygote"
+                "--no-zygote",
+                "--single-process",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-default-apps",
+                "--disable-translate",
+                "--disable-component-update",
+                "--mute-audio",
+                "--hide-scrollbars",
+                "--js-flags=--max-old-space-size=128",
             ]
         )
         logger.info("Created new browser instance")
@@ -128,15 +138,17 @@ class BrowserPool:
                 to_remove.append(entry)
             elif not entry["in_use"] and not self._is_browser_healthy(entry["browser"]):
                 to_remove.append(entry)
+            elif entry["in_use"] and age > self.browser_ttl_seconds * 3:
+                logger.warning("Force-closing stuck browser (in_use for %ds)", age)
+                to_remove.append(entry)
                 
         for entry in to_remove:
-            if not entry["in_use"]:  # Only remove if not in use
-                try:
-                    entry["browser"].close()
-                    self._browsers.remove(entry)
-                    logger.info("Cleaned up old browser from pool (total: %d)", len(self._browsers))
-                except Exception as e:
-                    logger.warning("Error closing browser during cleanup: %s", e)
+            try:
+                entry["browser"].close()
+                self._browsers.remove(entry)
+                logger.info("Cleaned up browser from pool (total: %d)", len(self._browsers))
+            except Exception as e:
+                logger.warning("Error closing browser during cleanup: %s", e)
                     
     def shutdown(self):
         """Close all browsers and stop Playwright."""
@@ -161,7 +173,7 @@ class BrowserPool:
 def get_browser_pool(max_browsers: int = 1) -> BrowserPool:
     """Get the thread-local browser pool instance."""
     if not hasattr(_local, 'pool'):
-        _local.pool = BrowserPool(max_browsers=max_browsers)
+        _local.pool = BrowserPool(max_browsers=max_browsers, browser_ttl_seconds=120)
     return _local.pool
 
 

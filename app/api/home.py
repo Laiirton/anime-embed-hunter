@@ -1,8 +1,6 @@
 import logging
 from flask import jsonify, request, current_app
-from threading import Thread
-
-from app import limiter
+from app import limiter, get_scraper_queue
 from app.services.scraper import ScraperService
 from app.services.site_manager import site_manager
 from app.services.unified_cache import (
@@ -100,14 +98,14 @@ def _scrape_home_featured(url=None, force_refresh=False):
                 return result, 200
             
             elif status == "stale":
-                # Dados obsoletos - dispara refresh em background e retorna stale
+                # Dados obsoletos - enfileira refresh no RQ e retorna stale
                 home_url = request.args.get("url", "https://animesdigital.org/home").strip()
                 site_key, config = site_manager.get_config_for_url(home_url)
                 if site_key:
-                    Thread(
-                        target=_background_refresh, 
-                        args=(home_url, config, site_key, cache_key, ttl_seconds)
-                    ).start()
+                    get_scraper_queue().enqueue(
+                        'app.tasks.scraper.run_background_refresh',
+                        home_url, config.model_dump(), site_key, cache_key, ttl_seconds
+                    )
                 
                 if not _has_unknown_items(cached_payload):
                     result = {**cached_payload, "cached": True, "cache_source": "persistent_stale"}
@@ -185,79 +183,6 @@ def _scrape_home_featured(url=None, force_refresh=False):
     except Exception as exc:
         logger.error("Unexpected error scraping home featured: %s", exc)
         return {"error": "Internal server error"}, 500
-
-
-def _background_refresh(url, config, site_key, cache_key, ttl_seconds):
-    """Background refresh of home featured cache."""
-    try:
-        from app import create_app
-        app = create_app()
-        with app.app_context():
-            from app.services.site_manager import site_manager
-            from app.utils.helpers import clean_name, extract_audio_type, format_info
-            from app.api.db_utils import save_animes_to_db, save_episodes_to_db
-            from app.services.metadata_service import populate_metadata_for_dicts
-            from app.services.unified_cache import volatile_set, persistent_set
-            
-            with ScraperService() as scraper:
-                context = scraper._get_context()
-                page = context.new_page()
-                try:
-                    result = scraper.extract_home_sections(page, url, config)
-                    if "error" in result:
-                        return
-                    
-                    url_patterns = getattr(config, 'url_patterns', {})
-                    sections_data = {}
-                    all_items_to_populate = []
-                    
-                    if "sections" in result:
-                        for section_name, items in result["sections"].items():
-                            processed = _process_featured_items(items, scraper, url_patterns)
-                            sections_data[section_name] = processed
-                            all_items_to_populate.extend(processed)
-                    else:
-                        items = result.get("episode_urls", [])
-                        processed = _process_featured_items(items, scraper, url_patterns)
-                        sections_data["featured"] = processed
-                        all_items_to_populate.extend(processed)
-                    
-                    populate_metadata_for_dicts(all_items_to_populate)
-                    
-                    animes_to_save = [item for item in all_items_to_populate if item["item_type"] in ["anime", "movie"]]
-                    episodes_to_save = [item for item in all_items_to_populate if item["item_type"] == "episode"]
-                    
-                    if animes_to_save:
-                        save_animes_to_db(animes_to_save)
-                    if episodes_to_save:
-                        save_episodes_to_db(episodes_to_save)
-                    
-                    ordered_sections = {}
-                    for key in ["releases", "latest_episodes", "latest_animes", "latest_movies"]:
-                        if key in sections_data:
-                            ordered_sections[key] = sections_data[key]
-                    
-                    for key, value in sections_data.items():
-                        if key not in ordered_sections:
-                            ordered_sections[key] = value
-                    
-                    new_payload = {
-                        "source": site_key, 
-                        "url": url, 
-                        "sections": ordered_sections,
-                        "total_items": len(all_items_to_populate),
-                        "cached": False
-                    }
-                    volatile_set(cache_key, new_payload, timeout=ttl_seconds)
-                    persistent_set(cache_key, new_payload, ttl_hours=ttl_seconds // 3600)
-                finally:
-                    context.close()
-
-            from app.services.browser_pool import shutdown_browser_pool
-            shutdown_browser_pool()
-            
-    except Exception as e:
-        logger.error("Background refresh failed: %s", e)
 
 
 @bp.route("/home/featured", methods=["GET"])

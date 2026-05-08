@@ -18,12 +18,10 @@ class ScraperService:
     
     Uses the BrowserPool from browser_pool.py to avoid
     the ~2-4 second startup cost per scrape.
-    Falls back to creating a browser directly if pool is exhausted.
     """
     
     def __init__(self):
         self.browser = None
-        self._from_pool = False
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
@@ -33,41 +31,17 @@ class ScraperService:
         
         if browser:
             self.browser = browser
-            self._from_pool = True
             self.logger.info("Acquired browser from pool")
         else:
-            # Fallback: create browser directly (exhausted pool or error)
-            self.logger.info("Browser pool exhausted, creating standalone browser")
-            from playwright.sync_api import sync_playwright
-            self.playwright = sync_playwright().start()
-            self.browser = self.playwright.chromium.launch(
-                headless=Config.HEADLESS,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                    "--no-first-run",
-                    "--no-zygote"
-                ]
-            )
-            self._from_pool = False
+            raise RuntimeError("Browser pool exhausted - retry later")
             
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.browser:
-            if self._from_pool:
-                # Release back to pool for reuse
-                pool = get_browser_pool()
-                pool.release(self.browser)
-                self.logger.info("Released browser back to pool")
-            else:
-                # Close standalone browser
-                self.browser.close()
-                if hasattr(self, 'playwright') and self.playwright:
-                    self.playwright.stop()
+            pool = get_browser_pool()
+            pool.release(self.browser)
+            self.logger.info("Released browser back to pool")
 
     def _get_context(self) -> BrowserContext:
         context = self.browser.new_context(
