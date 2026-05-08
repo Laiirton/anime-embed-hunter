@@ -193,7 +193,6 @@ def _background_refresh(url, config, site_key, cache_key, ttl_seconds):
         from app import create_app
         app = create_app()
         with app.app_context():
-            from app.services.scraper import ScraperService
             from app.services.site_manager import site_manager
             from app.utils.helpers import clean_name, extract_audio_type, format_info
             from app.api.db_utils import save_animes_to_db, save_episodes_to_db
@@ -253,6 +252,10 @@ def _background_refresh(url, config, site_key, cache_key, ttl_seconds):
                     persistent_set(cache_key, new_payload, ttl_hours=ttl_seconds // 3600)
                 finally:
                     context.close()
+
+            from app.services.browser_pool import shutdown_browser_pool
+            shutdown_browser_pool()
+            
     except Exception as e:
         logger.error("Background refresh failed: %s", e)
 

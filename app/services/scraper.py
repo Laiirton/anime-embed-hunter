@@ -3,7 +3,6 @@ import random
 import time
 import re
 import os
-import asyncio
 from typing import List, Dict, Any
 from urllib.parse import urljoin
 from playwright.sync_api import BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
@@ -28,14 +27,6 @@ class ScraperService:
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self):
-        # Resolve o erro "Playwright Sync API inside the asyncio loop"
-        # Garante que esta thread não tenha um loop de eventos ativo que conflite com o Sync do Playwright
-        try:
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-        except Exception:
-            pass
-
         # Try to get browser from pool first
         pool = get_browser_pool()
         browser = pool.acquire()

@@ -5,6 +5,7 @@ Reuses Chromium browser instances across requests to avoid
 the ~2-4 second startup cost per scrape.
 """
 
+import asyncio
 import logging
 import threading
 import time
@@ -14,9 +15,7 @@ from playwright.sync_api import sync_playwright, Browser
 
 logger = logging.getLogger(__name__)
 
-# Singleton pool instance
-_pool_instance = None
-_pool_lock = threading.Lock()
+_local = threading.local()
 
 
 class BrowserPool:
@@ -40,6 +39,10 @@ class BrowserPool:
     def _ensure_playwright(self):
         """Initialize Playwright if not already done."""
         if self._playwright is None:
+            try:
+                asyncio.set_event_loop(asyncio.new_event_loop())
+            except Exception:
+                pass
             self._playwright = sync_playwright().start()
             
     def _create_browser(self) -> Browser:
@@ -155,19 +158,19 @@ class BrowserPool:
             logger.info("Browser pool shut down")
 
 
-def get_browser_pool() -> BrowserPool:
-    """Get the singleton browser pool instance."""
-    global _pool_instance
-    with _pool_lock:
-        if _pool_instance is None:
-            _pool_instance = BrowserPool()
-        return _pool_instance
+def get_browser_pool(max_browsers: int = 1) -> BrowserPool:
+    """Get the thread-local browser pool instance."""
+    if not hasattr(_local, 'pool'):
+        _local.pool = BrowserPool(max_browsers=max_browsers)
+    return _local.pool
 
 
 def shutdown_browser_pool():
-    """Shutdown the singleton browser pool."""
-    global _pool_instance
-    with _pool_lock:
-        if _pool_instance:
-            _pool_instance.shutdown()
-            _pool_instance = None
+    """Shutdown the thread-local browser pool for the current thread."""
+    if hasattr(_local, 'pool'):
+        try:
+            _local.pool.shutdown()
+        except Exception as e:
+            logger.warning("Error shutting down thread-local pool: %s", e)
+        finally:
+            del _local.pool
