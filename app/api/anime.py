@@ -84,3 +84,84 @@ def get_anime(slug):
     except SQLAlchemyError as exc:
         logger.error("Anime lookup failed: %s", exc)
         return jsonify({"error": "Anime lookup failed"}), 500
+
+@bp.route("/anime/full", methods=["GET"])
+@limiter.limit("20 per minute")
+def get_anime_full():
+    if not check_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    name = request.args.get("name")
+    if not name:
+        return jsonify({"error": "Name parameter is required"}), 400
+
+    from app.api.utils import _escape_like_pattern
+    escaped_name = _escape_like_pattern(name.strip())
+    
+    try:
+        anime = (
+            Anime.query
+            .filter(Anime.name.ilike(f"%{escaped_name}%", escape="\\"))
+            .first()
+        )
+        
+        if not anime:
+            return jsonify({"error": "Anime not found"}), 404
+
+        from app.services.metadata_service import populate_anime_metadata_single
+        populate_anime_metadata_single(anime)
+
+        from app.models.embed import db, Episode
+        episodes = Episode.query.filter_by(anime_id=anime.id).order_by(Episode.id.asc()).all()
+
+        # Fallback 1: Se não achar episódios vinculados, tenta buscar por nome no título
+        if not episodes:
+            episodes = Episode.query.filter(Episode.title.ilike(f"%{escaped_name}%")).order_by(Episode.id.asc()).all()
+            if episodes:
+                # Vincula os episódios encontrados ao anime para as próximas consultas
+                for ep in episodes:
+                    ep.anime_id = anime.id
+                db.session.commit()
+
+        # Fallback 2: Se ainda assim não achar nada, faz um scrape rápido da página do anime
+        if not episodes:
+            from app.services.scraper import ScraperService
+            from app.services.site_manager import site_manager
+            site_key, config = site_manager.get_config_for_url(anime.url)
+            
+            if site_key:
+                try:
+                    with ScraperService() as scraper:
+                        context = scraper._get_context()
+                        page = context.new_page()
+                        try:
+                            # Já configuramos o goto para usar domcontentloaded, então será rápido
+                            scraper._goto_with_retry(page, anime.url)
+                            data = scraper.extract_episodes(page, anime.url, config)
+                            
+                            if 'episode_urls' in data and data['episode_urls']:
+                                for item in data['episode_urls']:
+                                    # Verifica se o episódio já existe por URL
+                                    ep = Episode.query.filter_by(url=item['url']).first()
+                                    if not ep:
+                                        ep = Episode(title=item['title'], url=item['url'], anime_id=anime.id)
+                                        db.session.add(ep)
+                                    else:
+                                        ep.anime_id = anime.id # Atualiza o vínculo
+                                
+                                db.session.commit()
+                                # Recarrega os episódios agora vinculados
+                                episodes = Episode.query.filter_by(anime_id=anime.id).order_by(Episode.id.asc()).all()
+                        finally:
+                            page.close()
+                            context.close()
+                except Exception as e:
+                    logger.warning(f"Failed to scrape episodes fallback for {anime.name}: {e}")
+
+        payload = _serialize_anime(anime, include_episodes_count=True)
+        payload["episodes"] = [_serialize_episode(ep) for ep in episodes]
+
+        return jsonify(payload), 200
+    except SQLAlchemyError as exc:
+        logger.error("Anime full lookup failed: %s", exc)
+        return jsonify({"error": "Anime lookup failed"}), 500
