@@ -177,12 +177,13 @@ def _resolve_episode_url_by_id(episode_id, prefix=None):
         .first()
     )
     if episode:
-        return episode.url, episode
+        return episode.url.rstrip("/:"), episode
 
     if prefix is None:
         prefix = (request.args.get("prefix") or "a").strip().lower()
         if not re.match(r"^[a-z0-9-]+$", prefix):
             prefix = "a"
+    episode_id = episode_id.rstrip("/:")
     return f"https://animesdigital.org/video/{prefix}/{episode_id}", None
 
 def _is_valid_http_url(value):

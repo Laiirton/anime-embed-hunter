@@ -70,7 +70,7 @@ class ScraperService:
                 last_exc = e
                 if attempt < retries:
                     self.logger.warning(
-                        "page.goto attempt %d/%d failed for %s: %s",
+                        "page.goto attempt %d/%d failed for %s - %s",
                         attempt + 1, retries + 1, url, e
                     )
                     time.sleep(2 ** attempt)
