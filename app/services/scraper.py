@@ -64,7 +64,7 @@ class ScraperService:
         last_exc = None
         for attempt in range(retries + 1):
             try:
-                page.goto(url, timeout=Config.BROWSER_TIMEOUT)
+                page.goto(url, timeout=Config.BROWSER_TIMEOUT, wait_until="domcontentloaded")
                 return
             except Exception as e:
                 last_exc = e
