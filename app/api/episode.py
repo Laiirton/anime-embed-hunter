@@ -26,9 +26,10 @@ def get_episode_players(episode_id):
 
     try:
         # Validate request parameters with Pydantic
+        prefix = request.args.get("prefix") or "a"
         ep_req = EpisodePlayersRequest(
             episode_id=episode_id,
-            prefix=request.args.get("prefix")
+            prefix=prefix,
         )
         episode_id = ep_req.episode_id
         prefix = ep_req.prefix

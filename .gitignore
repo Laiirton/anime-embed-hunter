@@ -183,3 +183,4 @@ cython_debug/
 legacy/
 *.db
 .env.producao
+/.sisyphus
