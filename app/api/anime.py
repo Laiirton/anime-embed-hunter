@@ -112,11 +112,26 @@ def get_anime_full():
         populate_anime_metadata_single(anime)
 
         from app.models.embed import db, Episode
+        from datetime import datetime, timedelta
+        
         episodes = Episode.query.filter_by(anime_id=anime.id).order_by(Episode.id.asc()).all()
 
-        # Se o anime está em exibição OU temos menos de 5 episódios no banco,
-        # vamos raspar a página para garantir que temos a lista atualizada.
-        should_scrape = (anime.status and "exib" in anime.status.lower()) or (len(episodes) < 5)
+        # Evita raspar toda hora se já foi raspado recentemente (nas últimas 2 horas)
+        is_recent = False
+        if anime.last_scanned:
+            if isinstance(anime.last_scanned, str):
+                last_scanned_dt = datetime.fromisoformat(anime.last_scanned.replace('Z', '+00:00'))
+            else:
+                last_scanned_dt = anime.last_scanned
+                
+            if last_scanned_dt.tzinfo:
+                from datetime import timezone
+                is_recent = (datetime.now(timezone.utc) - last_scanned_dt) < timedelta(hours=2)
+            else:
+                is_recent = (datetime.utcnow() - last_scanned_dt) < timedelta(hours=2)
+
+        # Só raspa se não tiver episódios OU se estiver em exibição e não for recente
+        should_scrape = (not episodes) or (anime.status and "exib" in anime.status.lower() and not is_recent)
 
         if should_scrape:
             from app.services.scraper import ScraperService
@@ -135,7 +150,6 @@ def get_anime_full():
                             
                             if 'episode_urls' in data and data['episode_urls']:
                                 for item in data['episode_urls']:
-                                    # Verifica se o episódio já existe por URL
                                     ep = Episode.query.filter_by(url=item['url']).first()
                                     if not ep:
                                         ep = Episode(title=item['title'], url=item['url'], anime_id=anime.id)
@@ -143,6 +157,7 @@ def get_anime_full():
                                     else:
                                         ep.anime_id = anime.id # Atualiza o vínculo
                                 
+                                anime.last_scanned = datetime.utcnow()
                                 db.session.commit()
                                 # Recarrega os episódios agora vinculados
                                 episodes = Episode.query.filter_by(anime_id=anime.id).order_by(Episode.id.asc()).all()
