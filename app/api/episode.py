@@ -41,6 +41,25 @@ def get_episode_players(episode_id):
     if not site_key:
         return jsonify({"error": "URL domain not supported"}), 400
 
+    # Tenta carregar do cache (banco de dados)
+    if episode and episode.embed_url:
+        import json
+        try:
+            players = json.loads(episode.embed_url)
+            payload = {
+                "cached": True,
+                "episode_id": int(episode_id),
+                "episode_url": episode_url,
+                "players": players,
+                "source": site_key,
+                "title": episode.title,
+                "total_players": len(players)
+            }
+            return jsonify(payload), 200
+        except json.JSONDecodeError:
+            # Se não for JSON válido (talvez uma URL antiga), segue para o scrape
+            pass
+
     try:
         with ScraperService() as scraper:
             context = scraper._get_context()
@@ -53,6 +72,14 @@ def get_episode_players(episode_id):
                 payload["source"] = site_key
                 payload["episode_id"] = int(episode_id)
                 payload["cached"] = False
+                
+                # Salva no banco de dados para as próximas consultas
+                if episode and "players" in payload:
+                    import json
+                    episode.embed_url = json.dumps(payload["players"])
+                    from app.models.embed import db
+                    db.session.commit()
+                
                 if episode:
                     payload["database_episode"] = _serialize_episode(episode)
                 return jsonify(payload), 200
