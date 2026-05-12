@@ -59,12 +59,12 @@ class ScraperService:
             return False
         return re.match(pattern, url) is not None
 
-    def _goto_with_retry(self, page: Page, url: str, retries: int = 2) -> None:
+    def _goto_with_retry(self, page: Page, url: str, retries: int = 2, wait_until: str = "domcontentloaded") -> None:
         """page.goto() com retry e backoff exponencial."""
         last_exc = None
         for attempt in range(retries + 1):
             try:
-                page.goto(url, timeout=Config.BROWSER_TIMEOUT, wait_until="domcontentloaded")
+                page.goto(url, timeout=Config.BROWSER_TIMEOUT, wait_until=wait_until)
                 return
             except Exception as e:
                 last_exc = e

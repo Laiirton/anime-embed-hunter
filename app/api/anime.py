@@ -114,17 +114,11 @@ def get_anime_full():
         from app.models.embed import db, Episode
         episodes = Episode.query.filter_by(anime_id=anime.id).order_by(Episode.id.asc()).all()
 
-        # Fallback 1: Se não achar episódios vinculados, tenta buscar por nome no título
-        if not episodes:
-            episodes = Episode.query.filter(Episode.title.ilike(f"%{escaped_name}%")).order_by(Episode.id.asc()).all()
-            if episodes:
-                # Vincula os episódios encontrados ao anime para as próximas consultas
-                for ep in episodes:
-                    ep.anime_id = anime.id
-                db.session.commit()
+        # Se o anime está em exibição OU temos menos de 5 episódios no banco,
+        # vamos raspar a página para garantir que temos a lista atualizada.
+        should_scrape = (anime.status and "exib" in anime.status.lower()) or (len(episodes) < 5)
 
-        # Fallback 2: Se ainda assim não achar nada, faz um scrape rápido da página do anime
-        if not episodes:
+        if should_scrape:
             from app.services.scraper import ScraperService
             from app.services.site_manager import site_manager
             site_key, config = site_manager.get_config_for_url(anime.url)
@@ -135,8 +129,8 @@ def get_anime_full():
                         context = scraper._get_context()
                         page = context.new_page()
                         try:
-                            # Já configuramos o goto para usar domcontentloaded, então será rápido
-                            scraper._goto_with_retry(page, anime.url)
+                            # Usa 'load' para garantir que a lista de episódios seja carregada
+                            scraper._goto_with_retry(page, anime.url, wait_until="load")
                             data = scraper.extract_episodes(page, anime.url, config)
                             
                             if 'episode_urls' in data and data['episode_urls']:
@@ -156,7 +150,17 @@ def get_anime_full():
                             page.close()
                             context.close()
                 except Exception as e:
-                    logger.warning(f"Failed to scrape episodes fallback for {anime.name}: {e}")
+                    logger.warning(f"Failed to scrape episodes for {anime.name}: {e}")
+
+        # Se mesmo depois do scrape (ou se não precisou raspar) ainda estiver vazio,
+        # tenta o Fallback 1 (buscar por nome no banco)
+        if not episodes:
+            episodes = Episode.query.filter(Episode.title.ilike(f"%{escaped_name}%")).order_by(Episode.id.asc()).all()
+            if episodes:
+                # Vincula os episódios encontrados ao anime para as próximas consultas
+                for ep in episodes:
+                    ep.anime_id = anime.id
+                db.session.commit()
 
         payload = _serialize_anime(anime, include_episodes_count=True)
         payload["episodes"] = [_serialize_episode(ep) for ep in episodes]
