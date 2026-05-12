@@ -179,6 +179,8 @@ def get_anime_full():
 
         payload = _serialize_anime(anime, include_episodes_count=True)
         payload["episodes"] = [_serialize_episode(ep) for ep in episodes]
+        # Corrige o episodes_count para refletir a quantidade de episódios reais na lista
+        payload["episodes_count"] = len(episodes)
 
         return jsonify(payload), 200
     except SQLAlchemyError as exc:
