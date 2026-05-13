@@ -1,0 +1,5 @@
+from app.repositories.anime_repository import AnimeRepository
+from app.repositories.episode_repository import EpisodeRepository
+from app.repositories.favorite_repository import FavoriteRepository
+from app.repositories.history_repository import HistoryRepository
+from app.repositories.embed_request_repository import EmbedRequestRepository

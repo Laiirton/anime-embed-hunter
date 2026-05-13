@@ -161,7 +161,39 @@ Body JSON:
 
 ---
 
-## 11) `GET /search`
+## 11) `DELETE /favorites/:id`
+
+O que faz:
+
+- Remove um favorito do usuario (`X-USER-ID`).
+
+Path param:
+
+- `id` (obrigatorio, numerico)
+
+Query params:
+
+- `user_id` (opcional se nao usar `X-USER-ID`)
+
+---
+
+## 12) `DELETE /history/:id`
+
+O que faz:
+
+- Remove um item do historico do usuario (`X-USER-ID`).
+
+Path param:
+
+- `id` (obrigatorio, numerico)
+
+Query params:
+
+- `user_id` (opcional se nao usar `X-USER-ID`)
+
+---
+
+## 13) `GET /search`
 
 O que faz:
 
@@ -173,7 +205,7 @@ Query params:
 
 ---
 
-## 12) `GET /get-embed`
+## 14) `GET /get-embed`
 
 O que faz:
 
@@ -186,7 +218,7 @@ Query params:
 
 ---
 
-## 13) `POST /reload-config`
+## 15) `POST /reload-config`
 
 O que faz:
 
@@ -198,7 +230,7 @@ Body:
 
 ---
 
-## 14) `POST /maintenance/cleanup-cache`
+## 16) `POST /maintenance/cleanup-cache`
 
 O que faz:
 
@@ -210,7 +242,7 @@ Body:
 
 ---
 
-## 15) `GET /health`
+## 17) `GET /health`
 
 O que faz:
 

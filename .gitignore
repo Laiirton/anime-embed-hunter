@@ -184,3 +184,6 @@ legacy/
 *.db
 .env.producao
 /.sisyphus
+
+# Exclude .verboo AI tool configs
+.verboo/

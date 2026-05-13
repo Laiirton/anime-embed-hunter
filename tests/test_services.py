@@ -21,17 +21,21 @@ class TestBrowserPool:
         assert len(pool._browsers) == 0
     
     def test_pool_singleton(self):
-        from app.services.browser_pool import get_browser_pool, _pool_instance, _pool_lock
-        with _pool_lock:
-            original = _pool_instance
+        from app.services.browser_pool import get_browser_pool, _local
         
-        pool1 = get_browser_pool()
-        pool2 = get_browser_pool()
-        assert pool1 is pool2
+        # Save and clear existing pool if any
+        existing = getattr(_local, 'pool', None)
+        if existing:
+            delattr(_local, 'pool')
         
-        # Cleanup
-        with _pool_lock:
-            _pool_instance = original
+        try:
+            pool1 = get_browser_pool()
+            pool2 = get_browser_pool()
+            assert pool1 is pool2
+        finally:
+            # Restore original pool
+            if existing:
+                _local.pool = existing
     
     @patch('app.services.browser_pool.sync_playwright')
     def test_acquire_release_browser(self, mock_playwright):

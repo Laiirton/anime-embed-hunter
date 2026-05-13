@@ -151,6 +151,22 @@ def _resolve_catalog_order():
     }
     return order_key, mapping.get(order_key, Anime.name.asc())
 
+def _get_current_domain():
+    from flask import current_app
+    try:
+        return current_app.config.get("CURRENT_DOMAIN", "animesdigital.org")
+    except RuntimeError:
+        return "animesdigital.org"
+
+
+def _build_url(path):
+    try:
+        domain = _get_current_domain()
+    except RuntimeError:
+        domain = "animesdigital.org"
+    return f"https://{domain}{path}"
+
+
 def _resolve_anime_by_slug(slug):
     if not slug:
         return None
@@ -159,8 +175,8 @@ def _resolve_anime_by_slug(slug):
     if not normalized:
         return None
 
-    full_url_candidate = f"https://animesdigital.org/anime/{normalized}"
-    anime = Anime.query.filter_by(url=full_url_candidate).first()
+    full_url = _build_url(f"/anime/{normalized}")
+    anime = Anime.query.filter_by(url=full_url).first()
     if anime:
         return anime
 
@@ -169,6 +185,7 @@ def _resolve_anime_by_slug(slug):
         return Anime.query.filter(Anime.url.ilike(f"%{suffix}")).first()
 
     return Anime.query.filter(Anime.url.ilike(f"%/anime/%/{normalized}")).first()
+
 
 def _resolve_episode_url_by_id(episode_id, prefix=None):
     episode = (
@@ -184,7 +201,7 @@ def _resolve_episode_url_by_id(episode_id, prefix=None):
         if not re.match(r"^[a-z0-9-]+$", prefix):
             prefix = "a"
     episode_id = episode_id.rstrip("/:")
-    return f"https://animesdigital.org/video/{prefix}/{episode_id}", None
+    return _build_url(f"/video/{prefix}/{episode_id}"), None
 
 def _is_valid_http_url(value):
     try:

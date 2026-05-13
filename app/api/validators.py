@@ -10,6 +10,11 @@ from typing import Optional
 from enum import Enum
 
 
+def _default_home_url():
+    from app.api.utils import _build_url
+    return _build_url("/home")
+
+
 class AudioType(str, Enum):
     """Supported audio types."""
     DUBBED = "Dublado"
@@ -116,13 +121,13 @@ class EpisodePlayersRequest(BaseModel):
 
 class HomeFeaturedRequest(BaseModel):
     """Request model for home featured endpoint."""
-    url: Optional[str] = Field(default="https://animesdigital.org/home")
+    url: Optional[str] = Field(default=None)
     force: bool = Field(default=False)
     
     @field_validator('url', mode='before')
     def validate_url(cls, v):
         if not v:
-            return "https://animesdigital.org/home"
+            return _default_home_url()
         url = str(v).strip()
         if not url.startswith(('http://', 'https://')):
             raise ValueError('Invalid URL - must start with http:// or https://')

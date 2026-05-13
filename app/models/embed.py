@@ -1,3 +1,5 @@
+import json
+
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone
 
@@ -89,7 +91,6 @@ class EmbedRequest(db.Model):
         super().__init__(**kwargs)
 
     def to_dict(self):
-        import json
         return json.loads(self.response_data)
 
 

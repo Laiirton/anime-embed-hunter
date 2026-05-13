@@ -50,6 +50,13 @@ class ScraperService:
             locale="en-US",
             timezone_id="America/Sao_Paulo"
         )
+        # Track context creation for the browser pool's per-browser budget
+        try:
+            from app.services.browser_pool import get_browser_pool
+            pool = get_browser_pool()
+            pool.record_context_created(self.browser)
+        except Exception:
+            pass  # Best-effort; don't break scraping if tracking fails
         # Bloqueia recursos pesados para economizar RAM no Render
         context.route("**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,ttf,otf}", lambda route: route.abort())
         return context

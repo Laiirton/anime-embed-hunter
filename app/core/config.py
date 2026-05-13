@@ -70,6 +70,9 @@ class Config:
     DEFAULT_PAGE_SIZE = int(os.getenv("DEFAULT_PAGE_SIZE", "30"))
     MAX_PAGE_SIZE = int(os.getenv("MAX_PAGE_SIZE", "100"))
 
+    # Domain configuration for URL resolution
+    CURRENT_DOMAIN = os.getenv("CURRENT_DOMAIN", "animesdigital.org").strip().lower()
+
     USER_AGENTS = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
