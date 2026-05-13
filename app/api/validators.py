@@ -79,6 +79,24 @@ class SearchRequest(BaseModel):
         if not v or not str(v).strip():
             raise ValueError('Query parameter "q" is required')
         return str(v).strip()
+    
+    @field_validator('page', mode='before')
+    def parse_page(cls, v):
+        if v is None or v == '':
+            return 1
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 1
+    
+    @field_validator('limit', mode='before')
+    def parse_limit(cls, v):
+        if v is None or v == '':
+            return 30
+        try:
+            return min(max(1, int(v)), 100)
+        except (TypeError, ValueError):
+            return 30
 
 
 class EmbedRequestModel(BaseModel):

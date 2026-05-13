@@ -76,11 +76,11 @@ def create_app(config_class=Config):
     screenshots_path = os.path.abspath(os.path.join(app.root_path, "..", "screenshots"))
     os.makedirs(screenshots_path, exist_ok=True)
     
-    # Initialize browser pool
-    from app.services.browser_pool import get_browser_pool
-    get_browser_pool()  # Eager initialization
+    # Browser pool is lazily initialized on first scraper use
+    # On Render free tier (512MB RAM), eagerly starting Playwright
+    # would consume too much memory. The pool creates browsers on-demand now.
     logger = logging.getLogger(__name__)
-    logger.info("Browser pool initialized")
+    logger.info("Browser pool will be lazily initialized on first use")
     
     # Register cleanup on exit
     def cleanup():
