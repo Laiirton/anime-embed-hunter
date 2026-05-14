@@ -82,11 +82,15 @@ def create_app(config_class=Config):
     logger = logging.getLogger(__name__)
     logger.info("Browser pool will be lazily initialized on first use")
     
-    # Register cleanup on exit
+    # Register minimal cleanup on exit - browser pool is managed separately
+    # We avoid importing browser_pool here to prevent Playwright being loaded
+    # during Flask initialization
     def cleanup():
-        from app.services.browser_pool import shutdown_browser_pool
-        shutdown_browser_pool()
-        logger.info("Browser pool shut down")
+        try:
+            import app.services.browser_pool as bp
+            bp.shutdown_browser_pool()
+        except Exception:
+            pass
     
     atexit.register(cleanup)
     
