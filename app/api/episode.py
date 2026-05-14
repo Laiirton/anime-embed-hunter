@@ -2,20 +2,21 @@ import hashlib
 import json
 import logging
 import re
+import time
 
 from flask import current_app, jsonify, make_response, request
 from werkzeug.http import http_date
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import selectinload
 
-from app import cache, limiter
-from app.models.embed import Episode
-from app.services.scraper import ScraperService
+from app import cache, limiter, get_scraper_queue
+from app.models.embed import Episode, Anime
 from app.services.site_manager import site_manager
 from app.api.routes import bp
 from app.api.utils import (
+    _build_url,
     _escape_like_pattern,
     _parse_positive_int,
-    _resolve_episode_url_by_id,
     _serialize_episode,
     check_api_key,
 )
@@ -42,9 +43,7 @@ def _make_cached_response(payload, status=200, ttl=None):
     resp = make_response(jsonify(payload), status)
     if ttl:
         resp.headers["Cache-Control"] = f"public, max-age={ttl}"
-        resp.headers["Expires"] = http_date(
-            __import__("time").time() + ttl
-        )
+        resp.headers["Expires"] = http_date(time.time() + ttl)
         resp.headers["Vary"] = "Accept-Encoding"
     else:
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -52,16 +51,8 @@ def _make_cached_response(payload, status=200, ttl=None):
 
 
 def _resolve_episode_from_db(episode_id, prefix=None):
-    """
-    Try to find an episode in the database.
-
-    Returns (episode, constructed_url).
-    If found in DB, constructed_url is the stored URL.
-    If not found, constructed_url is built from prefix+episode_id.
-    """
+    """Find an episode in the database, or construct a fallback URL."""
     episode_id = str(episode_id).strip().rstrip("/:").replace(":", "/")
-
-    # Normalized lookup — handle both bare IDs and full URL fragments
     episode = (
         Episode.query.filter(Episode.url.like(f"%/video/%/{episode_id}%"))
         .order_by(Episode.last_updated.desc())
@@ -70,21 +61,17 @@ def _resolve_episode_from_db(episode_id, prefix=None):
     if episode:
         return episode, episode.url.rstrip("/:")
 
-    # Build fallback URL from prefix
     if prefix is None:
         prefix = (request.args.get("prefix") or "a").strip().lower()
         if not prefix or not re.match(r"^[a-z0-9-]+$", prefix):
             prefix = "a"
 
-    from app.api.utils import _build_url
     constructed_url = _build_url(f"/video/{prefix}/{episode_id}")
     return None, constructed_url
 
 
 def _serialize_episode_full(episode):
-    """
-    Full serialization for a single episode including nested anime data.
-    """
+    """Full serialization for a single episode including nested anime data."""
     payload = {
         "id": episode.id,
         "title": episode.title,
@@ -94,7 +81,6 @@ def _serialize_episode_full(episode):
         "audio_type": episode.audio_type,
         "last_updated": episode.last_updated.isoformat() if episode.last_updated else None,
     }
-
     if episode.anime:
         anime = episode.anime
         slug = ""
@@ -102,7 +88,6 @@ def _serialize_episode_full(episode):
         if anime.url and marker in anime.url:
             slug = anime.url.split(marker, 1)[1].strip("/")
         payload["anime"] = {
-            "id": anime.id,
             "name": anime.name,
             "url": anime.url,
             "slug": slug,
@@ -119,7 +104,6 @@ def _serialize_episode_full(episode):
         }
     else:
         payload["anime"] = None
-
     return payload
 
 
@@ -130,34 +114,23 @@ def _serialize_episode_full(episode):
 @bp.route("/episode/<episode_id>", methods=["GET"])
 @limiter.limit(_EPISODE_DETAIL_RATE)
 def get_episode_detail(episode_id):
-    """
-    Return detailed episode information from the database (NO scraping).
+    """Return episode details from DB only — no scraping in web process."""
+    try:
+        prefix = request.args.get("prefix", "a")
+        episode_id = str(episode_id)
+        EpisodePlayersRequest(episode_id=episode_id, prefix=prefix)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
-    Optional query parameter:
-      - prefix (str): site prefix for URL resolution when episode is not in DB.
-                      Defaults to 'a'.
-
-    If the episode is not found in the database, returns 404 with a hint
-    about the resolved URL so the caller can use /episode/<id>/players.
-    """
-    prefix = request.args.get("prefix")
-
-    episode_id = str(episode_id).strip()
-    if not episode_id or not episode_id.replace("/", "").replace("-", "").isdigit():
-        return jsonify({"error": "Episode ID must be numeric (optionally with hyphens)"}), 400
-
-    episode, resolved_url = _resolve_episode_from_db(episode_id.split("/")[-1], prefix)
-
+    episode, constructed_url = _resolve_episode_from_db(episode_id, prefix)
     if not episode:
         return jsonify({
-            "error": "Episode not found in database",
-            "episode_id": episode_id,
-            "resolved_url": resolved_url,
-            "hint": "Try GET /episode/<episode_id>/players to scrape embed URLs for this episode",
+            "error": "Episode not found",
+            "resolved_url": constructed_url,
+            "hint": "Use GET /episode/<id>/players to trigger scraping for this episode",
         }), 404
 
-    payload = _serialize_episode_full(episode)
-    return _make_cached_response(payload, ttl=_EPISODE_DETAIL_CACHE_TTL)
+    return jsonify(_serialize_episode_full(episode)), 200
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +140,10 @@ def get_episode_detail(episode_id):
 @bp.route("/episode/<episode_id>/players", methods=["GET"])
 @limiter.limit(_EPISODE_PLAYERS_RATE)
 def get_episode_players(episode_id):
+    """
+    Return players from cache. If no cache, enqueue scraping via RQ.
+    Scraping NEVER runs in this process (avoids OOM on Render free tier).
+    """
     if not check_api_key():
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -181,25 +158,22 @@ def get_episode_players(episode_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    # Build a cache key for the players response
+    # Flask-Cache lookup
     raw_prefix = prefix if prefix else "a"
     players_cache_key = f"players:{episode_id}:{raw_prefix}"
-
     cached_players = cache.get(players_cache_key)
     if cached_players is not None:
         cached_players["cached"] = True
         cached_players["cache_age"] = "cached"
         cached_players["cache_ttl"] = _EPISODE_PLAYERS_CACHE_TTL
-        return _make_cached_response(
-            cached_players, ttl=_EPISODE_PLAYERS_CACHE_TTL
-        )
+        return _make_cached_response(cached_players, ttl=_EPISODE_PLAYERS_CACHE_TTL)
 
     episode_url, episode = _resolve_episode_url_by_id(episode_id, prefix)
     site_key, config = site_manager.get_config_for_url(episode_url)
     if not site_key:
         return jsonify({"error": "URL domain not supported"}), 400
 
-    # Tenta carregar do cache (banco de dados)
+    # DB cache lookup (embed_url stored as JSON)
     if episode and episode.embed_url:
         try:
             players = json.loads(episode.embed_url)
@@ -213,47 +187,30 @@ def get_episode_players(episode_id):
                 "title": episode.title,
                 "total_players": len(players),
             }
-            # Store in Flask-Cache for faster subsequent lookups
             cache.set(players_cache_key, payload, timeout=_EPISODE_PLAYERS_CACHE_TTL)
             return _make_cached_response(payload, ttl=_EPISODE_PLAYERS_CACHE_TTL)
         except json.JSONDecodeError:
-            # Se não for JSON válido (talvez uma URL antiga), segue para o scrape
             pass
 
-    try:
-        with ScraperService() as scraper:
-            context = scraper._get_context()
-            page = context.new_page()
-            try:
-                payload = scraper.extract_episode_players(page, episode_url, config)
-                if "error" in payload:
-                    return jsonify(payload), 502
+    # No cache — enqueue scraping in RQ worker (separate process)
+    from app.tasks.scraper import run_scraper_task
+    get_scraper_queue().enqueue(run_scraper_task, episode_url, config)
 
-                payload["source"] = site_key
-                payload["episode_id"] = int(episode_id)
-                payload["cached"] = False
-                payload["cache_age"] = "fresh_scrape"
-                payload["cache_ttl"] = _EPISODE_PLAYERS_CACHE_TTL
+    # If we have old/stale data, return it with a hint
+    from app.services.unified_cache import persistent_get
+    cached_payload, status = persistent_get(episode_url)
+    if cached_payload and status in ("fresh", "stale"):
+        payload = cached_payload.copy()
+        payload["cached"] = True
+        payload["cache_age"] = "stale_refreshing"
+        return _make_cached_response(payload, ttl=30)
 
-                # Salva no banco de dados para as próximas consultas
-                if episode and "players" in payload:
-                    episode.embed_url = json.dumps(payload["players"])
-                    from app.models.embed import db
-                    db.session.commit()
-
-                if episode:
-                    payload["database_episode"] = _serialize_episode(episode)
-
-                # Cache the scraped result
-                cache.set(players_cache_key, payload, timeout=_EPISODE_PLAYERS_CACHE_TTL)
-
-                return _make_cached_response(payload, ttl=_EPISODE_PLAYERS_CACHE_TTL)
-            finally:
-                page.close()
-                context.close()
-    except Exception as exc:
-        logger.error("Episode players lookup failed: %s", exc)
-        return jsonify({"error": "Internal server error"}), 500
+    return jsonify({
+        "message": "No cached player data. Scraper enqueued — check back in ~30 seconds.",
+        "episode_id": int(episode_id),
+        "episode_url": episode_url,
+        "status": "enqueued",
+    }), 202
 
 
 # ---------------------------------------------------------------------------
@@ -271,45 +228,37 @@ def get_lancamentos():
     page = _parse_positive_int(request.args.get("page"), 1, 1, 100000)
     limit = _parse_positive_int(request.args.get("limit"), default_limit, 1, max_limit)
 
-    # Optional filters
-    audio_type_filter = (request.args.get("audio_type") or "").strip()
-    search_filter = (request.args.get("search") or "").strip()
+    # Filters
+    audio_type = request.args.get("audio_type")
+    search_term = request.args.get("search")
 
     sorted_args = tuple(sorted(request.args.items(multi=True)))
     cache_key = f"lancamentos:{hashlib.md5(str(sorted_args).encode()).hexdigest()}"
     cached = cache.get(cache_key)
     if cached is not None:
-        return jsonify(cached), 200
+        return _make_cached_response(cached, ttl=_LANCAMENTOS_CACHE_TTL)
 
     try:
-        from sqlalchemy.orm import selectinload
-
         query_builder = (
             Episode.query
             .options(selectinload(Episode.anime))
+            .order_by(Episode.last_updated.desc(), Episode.id.desc())
         )
 
-        # ---- audio_type filter ----
-        if audio_type_filter:
-            normalized = audio_type_filter.lower()
-            if normalized in {"dublado", "dub", "pt-br"}:
+        # Apply audio type filter
+        if audio_type:
+            audio_type_clean = audio_type.strip().lower()
+            if audio_type_clean in ("dublado", "dub", "pt-br"):
                 query_builder = query_builder.filter(Episode.audio_type == "Dublado")
-            elif normalized in {"legendado", "sub", "leg"}:
+            elif audio_type_clean in ("legendado", "sub", "leg"):
                 query_builder = query_builder.filter(Episode.audio_type == "Legendado")
-            else:
-                # Allow exact match for flexibility
-                query_builder = query_builder.filter(Episode.audio_type == audio_type_filter)
 
-        # ---- episode title search ----
-        if search_filter:
-            escaped = _escape_like_pattern(search_filter)
+        # Apply search filter on episode title
+        if search_term:
+            escaped = _escape_like_pattern(search_term.strip())
             query_builder = query_builder.filter(
                 Episode.title.ilike(f"%{escaped}%", escape="\\")
             )
-
-        query_builder = query_builder.order_by(
-            Episode.last_updated.desc(), Episode.id.desc()
-        )
 
         total_results = query_builder.count()
         total_pages = max(1, (total_results + limit - 1) // limit)

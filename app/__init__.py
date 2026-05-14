@@ -8,7 +8,6 @@ from app.core.config import Config
 from app.models.embed import db
 import os
 import logging
-import atexit
 from pythonjsonlogger import jsonlogger
 
 cache = Cache()
@@ -73,27 +72,12 @@ def create_app(config_class=Config):
 
     # Ensure instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)
-    screenshots_path = os.path.abspath(os.path.join(app.root_path, "..", "screenshots"))
-    os.makedirs(screenshots_path, exist_ok=True)
-    
-    # Browser pool is lazily initialized on first scraper use
-    # On Render free tier (512MB RAM), eagerly starting Playwright
-    # would consume too much memory. The pool creates browsers on-demand now.
+
+    # NO imports of Playwright/browser_pool here.
+    # Scraping runs ONLY in the RQ worker process (separate process, separate memory).
     logger = logging.getLogger(__name__)
-    logger.info("Browser pool will be lazily initialized on first use")
-    
-    # Register minimal cleanup on exit - browser pool is managed separately
-    # We avoid importing browser_pool here to prevent Playwright being loaded
-    # during Flask initialization
-    def cleanup():
-        try:
-            import app.services.browser_pool as bp
-            bp.shutdown_browser_pool()
-        except Exception:
-            pass
-    
-    atexit.register(cleanup)
-    
+    logger.info("Application started (no Playwright in web process)")
+
     # Register blueprints
     from app.api.routes import bp as api_bp
     app.register_blueprint(api_bp)
