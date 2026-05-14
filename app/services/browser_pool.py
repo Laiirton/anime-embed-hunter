@@ -91,8 +91,7 @@ def _get_playwright():
     global _playwright
     if _playwright is None:
         from playwright.sync_api import sync_playwright
-        _playwright = sync_playwright()
-        _playwright.start()
+        _playwright = sync_playwright().start()
     return _playwright
 
 
